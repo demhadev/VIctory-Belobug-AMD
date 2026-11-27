@@ -700,22 +700,20 @@ pub(super) fn wait_ended() {
 
 /// Events the title asked a fence to set (`SetEventOnCompletion`): the
 /// fence and the value it waits for; and the last value each fence was set
-/// to. Kept while a timeline is recorded, for [`in_progress`].
+/// to. Kept all the time in diagnostics builds, for [`in_progress`].
 static FENCE_EVENTS: Mutex<Option<std::collections::HashMap<u64, (u64, u64)>>> = Mutex::new(None);
 static FENCE_VALUES: Mutex<Option<std::collections::HashMap<u64, u64>>> = Mutex::new(None);
 
 /// The title asked `fence` to set `event` at `value`.
 pub(crate) fn fence_event(event: u64, fence: u64, value: u64) {
-    if on() {
-        FENCE_EVENTS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).insert(event, (fence, value));
-    }
+    // Kept whether a window records or not: the title asks for an event
+    // once and may wait on it long after (one handle, one entry).
+    FENCE_EVENTS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).insert(event, (fence, value));
 }
 
 /// `fence` was set to `value`.
 pub(crate) fn fence_value(fence: u64, value: u64) {
-    if on() {
-        FENCE_VALUES.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).insert(fence, value);
-    }
+    FENCE_VALUES.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).insert(fence, value);
 }
 
 /// Lines for the waits in progress now that began at least 100 ms ago, the
