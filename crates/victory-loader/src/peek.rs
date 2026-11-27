@@ -82,22 +82,30 @@ fn address(base: u64, expr: &Expr) -> Result<u64, u64> {
     Ok(at)
 }
 
-/// For `VICTORY_WATCH`: the first expression in `value` (peek syntax) and
-/// its byte count.
-pub(crate) fn parse_one(
-    value: &str,
-) -> Option<(impl Fn(u64) -> Option<u64> + use<>, usize, String)> {
+/// For `VICTORY_WATCH`: the first expression in `value` (peek syntax).
+pub(crate) struct Watched {
+    /// The address it names in the image at a base, if readable now.
+    pub resolve: Box<dyn Fn(u64) -> Option<u64> + Send + Sync>,
+    pub bytes: usize,
+    pub text: String,
+    /// The image offset of the first pointer it reads (none: no steps).
+    pub first_pointer: Option<u64>,
+}
+
+pub(crate) fn parse_one(value: &str) -> Option<Watched> {
     let expr = parse(value).into_iter().next()?;
     let (bytes, text) = (expr.bytes, expr.text.clone());
-    Some((
-        move |base| {
+    let first_pointer = (!expr.steps.is_empty()).then_some(expr.rva);
+    Some(Watched {
+        resolve: Box::new(move |base| {
             address(base, &expr)
                 .ok()
                 .filter(|&at| read(at, &mut [0u8; 1]))
-        },
+        }),
         bytes,
         text,
-    ))
+        first_pointer,
+    })
 }
 
 /// The bytes `expr` names in the image at `base`, as hex, or why not.
