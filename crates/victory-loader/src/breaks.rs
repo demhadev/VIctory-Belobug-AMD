@@ -2,7 +2,7 @@
 //! `VICTORY_BREAK=<rva>[,<rva>...]` (hex, with or without `0x`) puts a
 //! breakpoint on each instruction at the image base plus `rva`; each hit is
 //! counted, the first `VICTORY_BREAK_MAX` (20) of each are logged with the
-//! thread and its stack, and every 5 s a line gives the counts so far (so
+//! thread, its stack and the first four argument registers, and every 5 s a line gives the counts so far (so
 //! the log shows when a function stops being run). The original byte is put
 //! back for one instruction (single step) and the breakpoint set again.
 //! An `rva` must be the start of an instruction. A hit on another thread
@@ -145,6 +145,10 @@ unsafe extern "system" fn handler(info: *mut EXCEPTION_POINTERS) -> i32 {
             rva = format_args!("{:#x}", pc - BASE.load(Ordering::Relaxed)),
             hit = n,
             thread,
+            rcx = format_args!("{:#x}", context.Rcx),
+            rdx = format_args!("{:#x}", context.Rdx),
+            r8 = format_args!("{:#x}", context.R8),
+            r9 = format_args!("{:#x}", context.R9),
             "VICTORY_BREAK hit: {}",
             stack.join(" < ")
         );
