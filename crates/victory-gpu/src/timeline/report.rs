@@ -781,7 +781,9 @@ pub(super) fn write(file: &std::path::Path, data: Data, before: &Threads, after:
         let _ = writeln!(text, "\n{lost} events were lost: the buffer was full");
     }
     let beside = file.with_extension("txt");
-    let written = std::fs::write(&beside, text).and_then(|()| {
+    // (Its folder is made if it is not there: a missing one lost every window.)
+    let made = file.parent().filter(|p| !p.as_os_str().is_empty()).map_or(Ok(()), std::fs::create_dir_all);
+    let written = made.and_then(|()| std::fs::write(&beside, text)).and_then(|()| {
         let mut out = std::io::BufWriter::new(std::fs::File::create(file)?);
         chrome(&trace, &mut names, &data.stacks, after, &mut out)?;
         std::io::Write::flush(&mut out)
