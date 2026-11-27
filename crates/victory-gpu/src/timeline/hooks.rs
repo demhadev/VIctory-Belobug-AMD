@@ -7,7 +7,7 @@ use std::ffi::{CStr, c_void};
 use std::sync::Once;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::record::{kernel, on, standing, stood_at, ticks, waited, woken};
+use super::record::{kernel, on, standing, stood_at, ticks, wait_began, wait_ended, waited, woken};
 
 type Handle = *mut c_void;
 
@@ -52,10 +52,12 @@ macro_rules! wrapped {
 fn wait<T>(name: &'static str, object: u64, call: impl FnOnce() -> T) -> T {
     use windows_sys::Win32::Foundation::{GetLastError, SetLastError};
     let t0 = ticks();
+    wait_began(name, object, t0);
     let result = {
         let _standing = standing(object);
         call()
     };
+    wait_ended();
     // SAFETY: plain queries of this thread's own.
     unsafe {
         let error = GetLastError();

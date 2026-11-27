@@ -776,6 +776,7 @@ pub(super) fn write(file: &std::path::Path, data: Data, before: &Threads, after:
     let (events, lost) = (data.events.len(), data.lost);
     let trace = Trace::new(data.events, &stamps);
     let mut text = summary(&trace, &mut names, &data.stacks, before, after);
+    text.push_str(&super::record::in_progress());
     if lost > 0 {
         let _ = writeln!(text, "\n{lost} events were lost: the buffer was full");
     }

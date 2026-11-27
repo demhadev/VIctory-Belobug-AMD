@@ -643,6 +643,123 @@ fn place(object: u64) -> &'static AtomicU32 {
     &STOOD_AT[(object.wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 52) as usize]
 }
 
+/// Waits in progress, a slot a thread (taken at its first wait): the
+/// thread's id (0: not waiting now), the object, when the wait began, and
+/// the wait's name. A wait is recorded as an event only when it returns, so
+/// one that never returns showed nowhere; these slots say who is waiting on
+/// what when a window is written ([`in_progress`]). No lock: this runs
+/// inside the waits of our own locks too.
+struct Pending {
+    thread: AtomicU32,
+    object: std::sync::atomic::AtomicU64,
+    t0: std::sync::atomic::AtomicU64,
+    name: AtomicPtr<u8>,
+    len: AtomicUsize,
+}
+
+const PENDING_SLOTS: usize = 1024;
+static PENDING: [Pending; PENDING_SLOTS] = [const {
+    Pending {
+        thread: AtomicU32::new(0),
+        object: std::sync::atomic::AtomicU64::new(0),
+        t0: std::sync::atomic::AtomicU64::new(0),
+        name: AtomicPtr::new(std::ptr::null_mut()),
+        len: AtomicUsize::new(0),
+    }
+}; PENDING_SLOTS];
+static NEXT_PENDING: AtomicUsize = AtomicUsize::new(0);
+
+fn pending_slot() -> Option<&'static Pending> {
+    thread_local!(static SLOT: Cell<usize> = const { Cell::new(usize::MAX) });
+    let at = SLOT.with(|s| {
+        if s.get() == usize::MAX {
+            s.set(NEXT_PENDING.fetch_add(1, Ordering::Relaxed));
+        }
+        s.get()
+    });
+    PENDING.get(at)
+}
+
+/// This thread begins a wait on `object` named `name` at `t0`.
+pub(super) fn wait_began(name: &'static str, object: u64, t0: u64) {
+    if let Some(p) = pending_slot() {
+        p.object.store(object, Ordering::Relaxed);
+        p.t0.store(t0, Ordering::Relaxed);
+        p.name.store(name.as_ptr().cast_mut(), Ordering::Relaxed);
+        p.len.store(name.len(), Ordering::Relaxed);
+        p.thread.store(thread(), Ordering::Release);
+    }
+}
+
+/// This thread's wait returned.
+pub(super) fn wait_ended() {
+    if let Some(p) = pending_slot() {
+        p.thread.store(0, Ordering::Release);
+    }
+}
+
+/// Events the title asked a fence to set (`SetEventOnCompletion`): the
+/// fence and the value it waits for; and the last value each fence was set
+/// to. Kept while a timeline is recorded, for [`in_progress`].
+static FENCE_EVENTS: Mutex<Option<std::collections::HashMap<u64, (u64, u64)>>> = Mutex::new(None);
+static FENCE_VALUES: Mutex<Option<std::collections::HashMap<u64, u64>>> = Mutex::new(None);
+
+/// The title asked `fence` to set `event` at `value`.
+pub(crate) fn fence_event(event: u64, fence: u64, value: u64) {
+    if on() {
+        FENCE_EVENTS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).insert(event, (fence, value));
+    }
+}
+
+/// `fence` was set to `value`.
+pub(crate) fn fence_value(fence: u64, value: u64) {
+    if on() {
+        FENCE_VALUES.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).insert(fence, value);
+    }
+}
+
+/// Lines for the waits in progress now that began at least 100 ms ago, the
+/// longest first, with the fence an event stands for if the title asked one
+/// to set it.
+pub(super) fn in_progress() -> String {
+    use std::fmt::Write as _;
+    let now = ticks();
+    let mut waits: Vec<(u64, u32, &'static str, u64)> = PENDING
+        .iter()
+        .take(NEXT_PENDING.load(Ordering::Relaxed).min(PENDING_SLOTS))
+        .filter_map(|p| {
+            let thread = p.thread.load(Ordering::Acquire);
+            let (object, t0) = (p.object.load(Ordering::Relaxed), p.t0.load(Ordering::Relaxed));
+            let (ptr, len) = (p.name.load(Ordering::Relaxed), p.len.load(Ordering::Relaxed));
+            // SAFETY: a `&'static str` stored whole by `wait_began`; a slot
+            // read while its thread changes it at worst names another wait.
+            let name = unsafe { std::str::from_utf8(std::slice::from_raw_parts(ptr, len)).unwrap_or("?") };
+            (thread != 0 && !ptr.is_null() && thread == p.thread.load(Ordering::Acquire))
+                .then(|| (micros(now.saturating_sub(t0)), thread, name, object))
+        })
+        .filter(|w| w.0 >= 100_000)
+        .collect();
+    waits.sort_unstable_by_key(|w| std::cmp::Reverse(w.0));
+    let events = FENCE_EVENTS.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default();
+    let values = FENCE_VALUES.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default();
+    let mut text = format!("\nwaits in progress when this was written, 100 ms or longer ({}):\n", waits.len());
+    for (us, thread, name, object) in waits {
+        let _ = write!(text, "  thread {thread}: {name} on {object:#x}, for {:.1} s", us as f64 / 1e6);
+        if let Some(&(fence, wanted)) = events.get(&object) {
+            match values.get(&fence) {
+                Some(&at) => {
+                    let _ = write!(text, "; an event of fence {fence:#x}, which waits for {wanted} (the fence was last set to {at})");
+                }
+                None => {
+                    let _ = write!(text, "; an event of fence {fence:#x}, which waits for {wanted} (no set of that fence seen)");
+                }
+            }
+        }
+        text.push('\n');
+    }
+    text
+}
+
 /// This thread is about to wait for `object`, until what comes back is
 /// dropped.
 pub(super) fn standing(object: u64) -> Standing {
