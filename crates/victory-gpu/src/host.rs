@@ -539,6 +539,10 @@ pub(crate) fn references(object: &impl Interface) -> u32 {
 fn sweep() {
     // The in-place probe and census, if asked for (`VICTORY_INPLACE_PROBE`).
     crate::inplace::tick();
+    // Who touches the title memory the card uses, and where its copies lie
+    // (`VICTORY_CENSUS`).
+    #[cfg(feature = "diagnostics")]
+    crate::census::tick();
     static ON: OnceLock<bool> = OnceLock::new();
     if !*ON.get_or_init(|| std::env::var_os("VICTORY_SWEEP").is_none_or(|v| v != "0")) {
         return;
@@ -564,6 +568,7 @@ fn sweep() {
     crate::shadow::let_go_idle();
     crate::texture::let_go_idle();
     crate::resource::let_go_idle();
+    crate::list::trim_idle();
 }
 
 /// The number of the newest submission begun, and of the newest of which all
