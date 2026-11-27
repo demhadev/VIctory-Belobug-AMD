@@ -279,7 +279,63 @@ pub(super) fn waited(name: &'static str, object: u64, t0: u64) {
 /// `object` is about to be signalled.
 pub(super) fn woken(name: &'static str, object: u64) {
     let t = ticks();
+    signalled(object, t);
     put(Kind::Wake, name, (t, t), object, 0, 0);
+}
+
+/// Who signalled an object last, when, and how often since the start,
+/// windows or not: so that a wait that never returns can say who set its
+/// object before ([`in_progress`]). Open addressing on the object, no lock.
+struct Signal {
+    object: std::sync::atomic::AtomicU64,
+    thread: AtomicU32,
+    t: std::sync::atomic::AtomicU64,
+    count: AtomicU32,
+}
+
+const SIGNAL_SLOTS: usize = 16384;
+static SIGNALS: [Signal; SIGNAL_SLOTS] = [const {
+    Signal {
+        object: std::sync::atomic::AtomicU64::new(0),
+        thread: AtomicU32::new(0),
+        t: std::sync::atomic::AtomicU64::new(0),
+        count: AtomicU32::new(0),
+    }
+}; SIGNAL_SLOTS];
+
+fn signal_slot(object: u64, insert: bool) -> Option<&'static Signal> {
+    let mut at = (object.wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 50) as usize % SIGNAL_SLOTS;
+    for _ in 0..64 {
+        let slot = &SIGNALS[at];
+        let held = slot.object.load(Ordering::Acquire);
+        if held == object {
+            return Some(slot);
+        }
+        if held == 0 {
+            if !insert {
+                return None;
+            }
+            match slot.object.compare_exchange(0, object, Ordering::AcqRel, Ordering::Acquire) {
+                Ok(_) => return Some(slot),
+                Err(now) if now == object => return Some(slot),
+                Err(_) => {}
+            }
+        }
+        at = (at + 1) % SIGNAL_SLOTS;
+    }
+    None
+}
+
+/// `object` is signalled (set, released, woken) by this thread at `t`.
+pub(super) fn signalled(object: u64, t: u64) {
+    if object == 0 {
+        return;
+    }
+    if let Some(slot) = signal_slot(object, true) {
+        slot.thread.store(thread(), Ordering::Relaxed);
+        slot.t.store(t, Ordering::Relaxed);
+        slot.count.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 /// A call of the kernel's on `bytes` began at `t0`.
@@ -743,6 +799,19 @@ pub(super) fn in_progress() -> String {
     let mut text = format!("\nwaits in progress when this was written, 100 ms or longer ({}):\n", waits.len());
     for (us, thread, name, object) in waits {
         let _ = write!(text, "  thread {thread}: {name} on {object:#x}, for {:.1} s", us as f64 / 1e6);
+        match signal_slot(object, false) {
+            Some(s) => {
+                let ago = micros(now.saturating_sub(s.t.load(Ordering::Relaxed))) as f64 / 1e6;
+                let _ = write!(
+                    text,
+                    "; last signalled by thread {} {:.1} s ago, {} times since the start",
+                    s.thread.load(Ordering::Relaxed),
+                    ago,
+                    s.count.load(Ordering::Relaxed)
+                );
+            }
+            None => text.push_str("; never signalled since the start"),
+        }
         if let Some(&(fence, wanted)) = events.get(&object) {
             match values.get(&fence) {
                 Some(&at) => {

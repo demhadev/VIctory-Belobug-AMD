@@ -7,7 +7,7 @@ use std::ffi::{CStr, c_void};
 use std::sync::Once;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::record::{kernel, on, standing, stood_at, ticks, wait_began, wait_ended, waited, woken};
+use super::record::{kernel, on, signalled, standing, stood_at, ticks, wait_began, wait_ended, waited, woken};
 
 type Handle = *mut c_void;
 
@@ -20,6 +20,10 @@ macro_rules! first_arg {
 
 /// The wrapped functions that wait, by their place in the table.
 const WAITS: [usize; 12] = [0, 1, 2, 3, 7, 9, 11, 13, 16, 17, 20, 27];
+
+/// The wrapped functions that signal what their first argument names
+/// (set, release, wake): noted between windows too.
+const SIGNALS_OBJECT: [usize; 7] = [4, 5, 6, 14, 15, 18, 19];
 
 macro_rules! wrapped {
     ($($index:literal $name:ident ($($arg:ident: $type:ty),*) $(-> $result:ty)? => $body:expr;)*) => {
@@ -54,6 +58,9 @@ macro_rules! wrapped {
                             let result = unsafe { real($($arg),*) };
                             wait_ended();
                             return result;
+                        }
+                        if SIGNALS_OBJECT.contains(&$index) {
+                            signalled(first_arg!($($arg),*) as usize as u64, ticks());
                         }
                         // SAFETY: the caller's own call.
                         return unsafe { real($($arg),*) };
