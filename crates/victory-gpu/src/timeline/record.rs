@@ -800,7 +800,12 @@ pub(super) fn in_progress() -> String {
     for (us, thread, name, object) in waits {
         let _ = write!(text, "  thread {thread}: {name} on {object:#x}, for {:.1} s", us as f64 / 1e6);
         if name.starts_with("WaitFor") {
-            text.push_str(&handle_kind(object));
+            let kind = handle_kind(object);
+            let semaphore = kind == "; a Semaphore";
+            text.push_str(&kind);
+            if semaphore {
+                text.push_str(&made_text(object));
+            }
         }
         match signal_slot(object, false) {
             Some(s) => {
@@ -828,6 +833,122 @@ pub(super) fn in_progress() -> String {
         text.push('\n');
     }
     text
+}
+
+/// Semaphores made since the start, by handle: the thread that made one,
+/// its starting and greatest counts, and the maker's return addresses. Kept
+/// windows or not, without a lock; a handle value used again replaces it.
+struct Made {
+    object: std::sync::atomic::AtomicU64,
+    thread: AtomicU32,
+    counts: std::sync::atomic::AtomicU64,
+    frames: [AtomicUsize; MADE_FRAMES],
+}
+
+const MADE_FRAMES: usize = 8;
+const MADE_SLOTS: usize = 8192;
+static MADE: [Made; MADE_SLOTS] = [const {
+    Made {
+        object: std::sync::atomic::AtomicU64::new(0),
+        thread: AtomicU32::new(0),
+        counts: std::sync::atomic::AtomicU64::new(0),
+        frames: [const { AtomicUsize::new(0) }; MADE_FRAMES],
+    }
+}; MADE_SLOTS];
+
+fn made_slot(object: u64, insert: bool) -> Option<&'static Made> {
+    let mut at = (object.wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 51) as usize % MADE_SLOTS;
+    for _ in 0..64 {
+        let slot = &MADE[at];
+        let held = slot.object.load(Ordering::Acquire);
+        if held == object {
+            return Some(slot);
+        }
+        if held == 0 {
+            if !insert {
+                return None;
+            }
+            match slot.object.compare_exchange(0, object, Ordering::AcqRel, Ordering::Acquire) {
+                Ok(_) => return Some(slot),
+                Err(now) if now == object => return Some(slot),
+                Err(_) => {}
+            }
+        }
+        at = (at + 1) % MADE_SLOTS;
+    }
+    None
+}
+
+/// This thread made the semaphore `object` with these counts.
+pub(super) fn semaphore_made(object: u64, initial: i32, most: i32) {
+    if object == 0 || object == u64::MAX {
+        return;
+    }
+    let mut frames = [0usize; MADE_FRAMES];
+    // SAFETY: room for that many return addresses.
+    unsafe {
+        windows_sys::Win32::System::Diagnostics::Debug::RtlCaptureStackBackTrace(
+            2,
+            MADE_FRAMES as u32,
+            frames.as_mut_ptr().cast(),
+            std::ptr::null_mut(),
+        );
+    }
+    if let Some(slot) = made_slot(object, true) {
+        slot.thread.store(thread(), Ordering::Relaxed);
+        slot.counts.store(u64::from(initial as u32) << 32 | u64::from(most as u32), Ordering::Relaxed);
+        for (to, from) in slot.frames.iter().zip(frames) {
+            to.store(from, Ordering::Relaxed);
+        }
+    }
+}
+
+/// `address` as `module+offset`.
+fn where_is(address: usize) -> String {
+    use windows_sys::Win32::System::LibraryLoader::{
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, GetModuleFileNameW,
+        GetModuleHandleExW,
+    };
+    let mut module = std::ptr::null_mut();
+    // SAFETY: a plain query; the module is not held.
+    let found = unsafe {
+        GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            address as *const u16,
+            &mut module,
+        )
+    } != 0;
+    if !found {
+        return format!("{address:#x}");
+    }
+    let mut name = [0u16; 260];
+    // SAFETY: our buffer and its length.
+    let len = unsafe { GetModuleFileNameW(module, name.as_mut_ptr(), name.len() as u32) } as usize;
+    let path = String::from_utf16_lossy(&name[..len]);
+    let file = path.rsplit(['\\', '/']).next().unwrap_or(&path).trim_end_matches(".dll").to_owned();
+    format!("{file}+{:#x}", address - module as usize)
+}
+
+/// For a semaphore made since the start: who made it, its counts, and where.
+fn made_text(object: u64) -> String {
+    let Some(slot) = made_slot(object, false) else {
+        return "; not seen made".to_owned();
+    };
+    let counts = slot.counts.load(Ordering::Relaxed);
+    let frames: Vec<String> = slot
+        .frames
+        .iter()
+        .map(|f| f.load(Ordering::Relaxed))
+        .filter(|&f| f != 0)
+        .map(where_is)
+        .collect();
+    format!(
+        "; made by thread {} with count {} of at most {}, at {}",
+        slot.thread.load(Ordering::Relaxed),
+        (counts >> 32) as u32 as i32,
+        counts as u32 as i32,
+        frames.join(" < ")
+    )
 }
 
 /// What kind of kernel object the handle `object` is (`NtQueryObject`), and
