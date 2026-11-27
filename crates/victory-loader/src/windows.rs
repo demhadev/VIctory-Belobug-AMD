@@ -84,6 +84,11 @@ pub fn load(prepared: &PreparedImage, dir: &Path) -> Result<LoadedImage> {
         // SAFETY: just mapped, and no title code has run.
         unsafe { crate::tls::redirect(loaded.base(), &loaded.info) }?;
     }
+    // The title's own state by image offsets, if asked (`VICTORY_PEEK`).
+    #[cfg(feature = "diagnostics")]
+    if !loaded.info.is_dll() {
+        crate::peek::start(loaded.base());
+    }
     tracing::info!(
         base = format_args!("{:#x}", loaded.base()),
         preferred = format_args!("{:#x}", loaded.info.image_base),

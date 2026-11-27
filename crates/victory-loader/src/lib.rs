@@ -32,6 +32,8 @@ pub(crate) mod publish;
 pub mod resolution;
 pub mod resolve;
 #[cfg(all(windows, feature = "diagnostics"))]
+mod peek;
+#[cfg(all(windows, feature = "diagnostics"))]
 mod profile;
 #[cfg(all(windows, feature = "diagnostics"))]
 mod stacks;
