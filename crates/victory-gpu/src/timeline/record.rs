@@ -799,6 +799,9 @@ pub(super) fn in_progress() -> String {
     let mut text = format!("\nwaits in progress when this was written, 100 ms or longer ({}):\n", waits.len());
     for (us, thread, name, object) in waits {
         let _ = write!(text, "  thread {thread}: {name} on {object:#x}, for {:.1} s", us as f64 / 1e6);
+        if name.starts_with("WaitFor") {
+            text.push_str(&handle_kind(object));
+        }
         match signal_slot(object, false) {
             Some(s) => {
                 let ago = micros(now.saturating_sub(s.t.load(Ordering::Relaxed))) as f64 / 1e6;
@@ -825,6 +828,47 @@ pub(super) fn in_progress() -> String {
         text.push('\n');
     }
     text
+}
+
+/// What kind of kernel object the handle `object` is (`NtQueryObject`), and
+/// for a thread or a process its id: a wait on a thread is a wait for it to
+/// end, and nothing calls `SetEvent` for that.
+fn handle_kind(object: u64) -> String {
+    use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
+    use windows_sys::Win32::System::Threading::{GetProcessId, GetThreadId};
+    type Query = unsafe extern "system" fn(isize, u32, *mut u8, u32, *mut u32) -> i32;
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
+    let query = *QUERY.get_or_init(|| {
+        // SAFETY: ntdll is always loaded; the export has this signature.
+        unsafe {
+            let ntdll = GetModuleHandleA(c"ntdll.dll".as_ptr().cast());
+            GetProcAddress(ntdll, c"NtQueryObject".as_ptr().cast()).map(|f| std::mem::transmute::<_, Query>(f))
+        }
+    });
+    let Some(query) = query else { return String::new() };
+    // ObjectTypeInformation (2): a UNICODE_STRING with the type's name first.
+    let mut buffer = [0u64; 128];
+    let mut needed = 0u32;
+    // SAFETY: our buffer and its size; the handle is only asked about.
+    let status = unsafe { query(object as isize, 2, buffer.as_mut_ptr().cast(), size_of_val(&buffer) as u32, &mut needed) };
+    if status < 0 {
+        return format!("; not a handle now (status {status:#x})");
+    }
+    // SAFETY: the call filled a UNICODE_STRING at the start: a length in
+    // bytes, then a pointer into the same buffer.
+    let kind = unsafe {
+        let len = (buffer[0] & 0xffff) as usize / 2;
+        let at = buffer[1] as *const u16;
+        if at.is_null() { String::new() } else { String::from_utf16_lossy(std::slice::from_raw_parts(at, len.min(64))) }
+    };
+    let handle = object as *mut std::ffi::c_void;
+    let id = match kind.as_str() {
+        // SAFETY: plain queries on a handle of that kind.
+        "Thread" => format!(" {}", unsafe { GetThreadId(handle) }),
+        "Process" => format!(" {}", unsafe { GetProcessId(handle) }),
+        _ => String::new(),
+    };
+    format!("; a {kind}{id}")
 }
 
 /// This thread is about to wait for `object`, until what comes back is
