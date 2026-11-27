@@ -42,65 +42,17 @@ pub struct Site {
 /// 1.0.2.1, image offsets).
 pub const SITES: [Site; 6] = [
     // +0x4d9efd0, loop 1: [rcx+rsi]
-    Site {
-        window: 0x4d9f04f,
-        store: 10,
-        len: 5,
-        bytes: &[
-            0x81, 0xe1, 0xe0, 0x7f, 0x00, 0x00, 0xc5, 0xfc, 0x10, 0x00, 0xc5, 0xfc, 0x11, 0x04,
-            0x31, 0x0f, 0xb6, 0x47, 0x0b, 0x39, 0xc5,
-        ],
-    },
+    Site { window: 0x4d9f04f, store: 10, len: 5, bytes: &[0x81, 0xe1, 0xe0, 0x7f, 0x00, 0x00, 0xc5, 0xfc, 0x10, 0x00, 0xc5, 0xfc, 0x11, 0x04, 0x31, 0x0f, 0xb6, 0x47, 0x0b, 0x39, 0xc5] },
     // loop 2: [rcx+rsi]
-    Site {
-        window: 0x4d9f10d,
-        store: 10,
-        len: 5,
-        bytes: &[
-            0x81, 0xe1, 0xe0, 0x7f, 0x00, 0x00, 0xc5, 0xfc, 0x10, 0x00, 0xc5, 0xfc, 0x11, 0x04,
-            0x31, 0x0f, 0xb6, 0x47, 0x0f, 0x41, 0x39, 0xc5,
-        ],
-    },
+    Site { window: 0x4d9f10d, store: 10, len: 5, bytes: &[0x81, 0xe1, 0xe0, 0x7f, 0x00, 0x00, 0xc5, 0xfc, 0x10, 0x00, 0xc5, 0xfc, 0x11, 0x04, 0x31, 0x0f, 0xb6, 0x47, 0x0f, 0x41, 0x39, 0xc5] },
     // loop 3: [r9+rsi]
-    Site {
-        window: 0x4d9f19c,
-        store: 12,
-        len: 6,
-        bytes: &[
-            0x41, 0x81, 0xe1, 0xe0, 0x7f, 0x00, 0x00, 0xc4, 0xc1, 0x7c, 0x10, 0x02, 0xc4, 0xc1,
-            0x7c, 0x11, 0x04, 0x31, 0x44, 0x0f, 0xb6, 0x4f, 0x0d, 0x44, 0x39, 0xc8,
-        ],
-    },
+    Site { window: 0x4d9f19c, store: 12, len: 6, bytes: &[0x41, 0x81, 0xe1, 0xe0, 0x7f, 0x00, 0x00, 0xc4, 0xc1, 0x7c, 0x10, 0x02, 0xc4, 0xc1, 0x7c, 0x11, 0x04, 0x31, 0x44, 0x0f, 0xb6, 0x4f, 0x0d, 0x44, 0x39, 0xc8] },
     // +0x4eec8e0, loop 1: [r9+r8]
-    Site {
-        window: 0x4eec95d,
-        store: 11,
-        len: 6,
-        bytes: &[
-            0x41, 0x81, 0xe1, 0xe0, 0x7f, 0x00, 0x00, 0xc5, 0xfc, 0x10, 0x00, 0xc4, 0x81, 0x7c,
-            0x11, 0x04, 0x01, 0x0f, 0xb6, 0x42, 0x0b, 0x39, 0xc5,
-        ],
-    },
+    Site { window: 0x4eec95d, store: 11, len: 6, bytes: &[0x41, 0x81, 0xe1, 0xe0, 0x7f, 0x00, 0x00, 0xc5, 0xfc, 0x10, 0x00, 0xc4, 0x81, 0x7c, 0x11, 0x04, 0x01, 0x0f, 0xb6, 0x42, 0x0b, 0x39, 0xc5] },
     // loop 2: [rdi+r8]
-    Site {
-        window: 0x4eeca08,
-        store: 10,
-        len: 6,
-        bytes: &[
-            0x81, 0xe7, 0xe0, 0x7f, 0x00, 0x00, 0xc5, 0xfc, 0x10, 0x06, 0xc4, 0xa1, 0x7c, 0x11,
-            0x04, 0x07, 0x0f, 0xb6, 0x72, 0x0d, 0x39, 0xf0,
-        ],
-    },
+    Site { window: 0x4eeca08, store: 10, len: 6, bytes: &[0x81, 0xe7, 0xe0, 0x7f, 0x00, 0x00, 0xc5, 0xfc, 0x10, 0x06, 0xc4, 0xa1, 0x7c, 0x11, 0x04, 0x07, 0x0f, 0xb6, 0x72, 0x0d, 0x39, 0xf0] },
     // loop 3: [r10+r8]
-    Site {
-        window: 0x4eeca82,
-        store: 11,
-        len: 6,
-        bytes: &[
-            0x41, 0x81, 0xe2, 0xe0, 0x7f, 0x00, 0x00, 0xc5, 0xfc, 0x10, 0x00, 0xc4, 0x81, 0x7c,
-            0x11, 0x04, 0x02, 0x0f, 0xb6, 0x42, 0x0f, 0x41, 0x39, 0xc6,
-        ],
-    },
+    Site { window: 0x4eeca82, store: 11, len: 6, bytes: &[0x41, 0x81, 0xe2, 0xe0, 0x7f, 0x00, 0x00, 0xc5, 0xfc, 0x10, 0x00, 0xc4, 0x81, 0x7c, 0x11, 0x04, 0x02, 0x0f, 0xb6, 0x42, 0x0f, 0x41, 0x39, 0xc6] },
 ];
 
 /// `lea rax, [base+index]` for a `vmovups [base+index], ymm0` (VEX, ModRM
@@ -118,11 +70,7 @@ fn lea_of(store: &[u8]) -> Option<[u8; 4]> {
         }
         _ => return None,
     };
-    let (op, modrm, sib) = (
-        *store.get(op_at)?,
-        *store.get(op_at + 1)?,
-        *store.get(op_at + 2)?,
-    );
+    let (op, modrm, sib) = (*store.get(op_at)?, *store.get(op_at + 1)?, *store.get(op_at + 2)?);
     if op != 0x11 || modrm != 0x04 || store.len() != op_at + 3 {
         return None;
     }
@@ -183,18 +131,12 @@ pub unsafe fn apply(base: usize, size: usize, marks: usize, sites: &[Site]) -> V
     let mut out = Vec::new();
     for site in sites {
         let done = (|| {
-            if site
-                .window
-                .checked_add(site.bytes.len())
-                .is_none_or(|end| end > size)
-                || site.store + site.len > site.bytes.len()
-            {
+            if site.window.checked_add(site.bytes.len()).is_none_or(|end| end > size) || site.store + site.len > site.bytes.len() {
                 return Hooked::Failed("outside the image");
             }
             let window = base + site.window;
             // SAFETY: inside the mapped image (checked above).
-            let there =
-                unsafe { std::slice::from_raw_parts(window as *const u8, site.bytes.len()) };
+            let there = unsafe { std::slice::from_raw_parts(window as *const u8, site.bytes.len()) };
             if there != site.bytes {
                 return Hooked::Differs;
             }
@@ -207,10 +149,7 @@ pub unsafe fn apply(base: usize, size: usize, marks: usize, sites: &[Site]) -> V
             };
             let to = *place + *used;
             let store = &site.bytes[site.store..site.store + site.len];
-            let (Some(body), Some(jump)) = (
-                stub(store, at, to, marks),
-                crate::console_insn::jump(at, to),
-            ) else {
+            let (Some(body), Some(jump)) = (stub(store, at, to, marks), crate::console_insn::jump(at, to)) else {
                 return Hooked::Failed("not a store of the expected form, or out of reach");
             };
             if *used + body.len() > crate::console_insn::STUBS_LEN {
@@ -235,15 +174,9 @@ pub unsafe fn apply(base: usize, size: usize, marks: usize, sites: &[Site]) -> V
         })();
         let offset = format_args!("{:#x}", site.window + site.store);
         match done {
-            Hooked::Done => {
-                tracing::info!(site = %offset, "renderer port 2: the title's descriptor record store at title+site patched to tell the layer its slot (VICTORY_PORT_DESCRIPTORS)")
-            }
-            Hooked::Differs => {
-                tracing::warn!(site = %offset, "renderer port 2: not patched, the title's bytes there are not the ones expected (another build?)")
-            }
-            Hooked::Failed(why) => {
-                tracing::warn!(site = %offset, why, "renderer port 2: not patched")
-            }
+            Hooked::Done => tracing::info!(site = %offset, "renderer port 2: the title's descriptor record store at title+site patched to tell the layer its slot (VICTORY_PORT_DESCRIPTORS)"),
+            Hooked::Differs => tracing::warn!(site = %offset, "renderer port 2: not patched, the title's bytes there are not the ones expected (another build?)"),
+            Hooked::Failed(why) => tracing::warn!(site = %offset, why, "renderer port 2: not patched"),
         }
         out.push(done);
     }
@@ -256,10 +189,7 @@ mod tests {
 
     #[test]
     fn the_sites_lea_their_stores_address() {
-        let leas: Vec<[u8; 4]> = SITES
-            .iter()
-            .map(|s| lea_of(&s.bytes[s.store..s.store + s.len]).unwrap())
-            .collect();
+        let leas: Vec<[u8; 4]> = SITES.iter().map(|s| lea_of(&s.bytes[s.store..s.store + s.len]).unwrap()).collect();
         assert_eq!(leas[0], [0x48, 0x8d, 0x04, 0x31]); // lea rax, [rcx+rsi]
         assert_eq!(leas[1], [0x48, 0x8d, 0x04, 0x31]);
         assert_eq!(leas[2], [0x49, 0x8d, 0x04, 0x31]); // [r9+rsi]
@@ -295,34 +225,17 @@ mod tests {
     /// in the heap, not otherwise.
     #[test]
     fn a_hooked_site_stores_and_marks_its_slot() {
-        use windows_sys::Win32::System::Memory::{
-            MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE, VirtualAlloc,
-        };
+        use windows_sys::Win32::System::Memory::{MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE, VirtualAlloc};
         // mov to, from (64 bits)
-        let mov = |to: u8, from: u8| {
-            [
-                0x48 | (from >> 3) << 2 | (to >> 3),
-                0x89,
-                0xc0 | (from & 7) << 3 | (to & 7),
-            ]
-        };
+        let mov = |to: u8, from: u8| [0x48 | (from >> 3) << 2 | (to >> 3), 0x89, 0xc0 | (from & 7) << 3 | (to & 7)];
         for site in &SITES {
             let store = &site.bytes[site.store..site.store + site.len];
             let lea = lea_of(store).unwrap();
             let base = lea[3] & 7 | (lea[0] & 1) << 3;
             let index = lea[3] >> 3 & 7 | (lea[0] & 2) << 2;
-            let load_at = site.store
-                - if site.bytes[site.store - 5] == 0xc4 {
-                    5
-                } else {
-                    4
-                };
+            let load_at = site.store - if site.bytes[site.store - 5] == 0xc4 { 5 } else { 4 };
             let load = &site.bytes[load_at..site.store];
-            let load_reg = if load[0] == 0xc4 {
-                load[4] & 7 | 8
-            } else {
-                load[3] & 7
-            };
+            let load_reg = if load[0] == 0xc4 { load[4] & 7 | 8 } else { load[3] & 7 };
             // fn(offset: rcx, table: rdx, record: r8, scratch: r9) -> rax:
             // the store's address as the window leaves its registers.
             let mut code: Vec<u8> = vec![0x56, 0x57, 0x53]; // push rsi ; push rdi ; push rbx
@@ -349,64 +262,25 @@ mod tests {
             type F = unsafe extern "system" fn(u64, *mut u8, *const u8, *mut u8) -> u64;
             // SAFETY: fresh memory for code and data, one copy changed before it runs.
             unsafe {
-                let place = VirtualAlloc(
-                    std::ptr::null(),
-                    0x10000,
-                    MEM_COMMIT | MEM_RESERVE,
-                    PAGE_EXECUTE_READWRITE,
-                ) as usize;
+                let place = VirtualAlloc(std::ptr::null(), 0x10000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) as usize;
                 assert_ne!(place, 0);
                 let (plain, hooked) = (place + 0x100 - at, place + 0x1100 - at);
                 std::ptr::copy_nonoverlapping(code.as_ptr(), plain as *mut u8, code.len());
                 std::ptr::copy_nonoverlapping(code.as_ptr(), hooked as *mut u8, code.len());
-                let heap = VirtualAlloc(
-                    std::ptr::null(),
-                    0x10000,
-                    MEM_COMMIT | MEM_RESERVE,
-                    PAGE_EXECUTE_READWRITE,
-                ) as *mut u8;
+                let heap = VirtualAlloc(std::ptr::null(), 0x10000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) as *mut u8;
                 let scratch = [0u8; 64];
-                let (mut slots, mut chunks) =
-                    (vec![0u8; 0x8000 / 32], vec![0u8; 0x8000 / 32 / 128]);
-                let marks = Box::new(Marks {
-                    start: heap as u64 + 0x2000,
-                    len: 0x8000,
-                    slots: slots.as_mut_ptr(),
-                    chunks: chunks.as_mut_ptr(),
-                });
-                let mine = [Site {
-                    window: 0x1100,
-                    ..*site
-                }];
-                assert_eq!(
-                    apply(place, 0x10000, &raw const *marks as usize, &mine),
-                    [Hooked::Done]
-                );
+                let (mut slots, mut chunks) = (vec![0u8; 0x8000 / 32], vec![0u8; 0x8000 / 32 / 128]);
+                let marks = Box::new(Marks { start: heap as u64 + 0x2000, len: 0x8000, slots: slots.as_mut_ptr(), chunks: chunks.as_mut_ptr() });
+                let mine = [Site { window: 0x1100, ..*site }];
+                assert_eq!(apply(place, 0x10000, &raw const *marks as usize, &mine), [Hooked::Done]);
                 assert_eq!(*((place + 0x1100 + site.store) as *const u8), 0xe9);
-                let (plain, hooked): (F, F) = (
-                    std::mem::transmute::<usize, F>(plain),
-                    std::mem::transmute::<usize, F>(hooked),
-                );
+                let (plain, hooked): (F, F) = (std::mem::transmute::<usize, F>(plain), std::mem::transmute::<usize, F>(hooked));
                 let record: [u8; 32] = std::array::from_fn(|k| k as u8 ^ 0x5a);
                 // In the heap: slot 0x40 + 3 of its start.
                 let table = heap.add(0x2000 + 0x40 * 32);
-                let first = plain(
-                    0x60 | 0x8000_0000,
-                    table.add(0x4000),
-                    record.as_ptr(),
-                    scratch.as_ptr().cast_mut(),
-                );
-                let second = hooked(
-                    0x60 | 0x8000_0000,
-                    table,
-                    record.as_ptr(),
-                    scratch.as_ptr().cast_mut(),
-                );
-                assert_eq!(
-                    first.wrapping_sub(0x4000),
-                    second,
-                    "the registers the window leaves"
-                );
+                let first = plain(0x60 | 0x8000_0000, table.add(0x4000), record.as_ptr(), scratch.as_ptr().cast_mut());
+                let second = hooked(0x60 | 0x8000_0000, table, record.as_ptr(), scratch.as_ptr().cast_mut());
+                assert_eq!(first.wrapping_sub(0x4000), second, "the registers the window leaves");
                 assert_eq!(std::slice::from_raw_parts(table.add(0x60), 32), &record);
                 assert_eq!(std::slice::from_raw_parts(table.add(0x4060), 32), &record);
                 let slot = 0x40 + 3;
@@ -427,37 +301,18 @@ mod tests {
 
     #[test]
     fn other_bytes_are_left_alone() {
-        use windows_sys::Win32::System::Memory::{
-            MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE, VirtualAlloc,
-        };
+        use windows_sys::Win32::System::Memory::{MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE, VirtualAlloc};
         // SAFETY: fresh memory of our own.
         unsafe {
-            let place = VirtualAlloc(
-                std::ptr::null(),
-                0x10000,
-                MEM_COMMIT | MEM_RESERVE,
-                PAGE_EXECUTE_READWRITE,
-            ) as *mut u8;
+            let place = VirtualAlloc(std::ptr::null(), 0x10000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) as *mut u8;
             let mut bytes = SITES[0].bytes.to_vec();
             bytes[3] = 0x7e; // and ecx, 7EE0h
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), place.add(0x100), bytes.len());
-            let mine = [Site {
-                window: 0x100,
-                ..SITES[0]
-            }];
+            let mine = [Site { window: 0x100, ..SITES[0] }];
             assert_eq!(apply(place as usize, 0x10000, 0, &mine), [Hooked::Differs]);
-            assert_eq!(
-                std::slice::from_raw_parts(place.add(0x100), bytes.len()),
-                &bytes[..]
-            );
-            let outside = [Site {
-                window: 0xfff0,
-                ..SITES[0]
-            }];
-            assert!(matches!(
-                apply(place as usize, 0x10000, 0, &outside)[..],
-                [Hooked::Failed(_)]
-            ));
+            assert_eq!(std::slice::from_raw_parts(place.add(0x100), bytes.len()), &bytes[..]);
+            let outside = [Site { window: 0xfff0, ..SITES[0] }];
+            assert!(matches!(apply(place as usize, 0x10000, 0, &outside)[..], [Hooked::Failed(_)]));
         }
     }
 }

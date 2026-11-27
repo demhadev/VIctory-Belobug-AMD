@@ -48,19 +48,14 @@ pub fn asked_interval_ms() -> Option<f64> {
     let spec = std::env::var("VICTORY_FRAME_INTERVAL_MS").ok()?;
     let ms = parse_interval_ms(&spec);
     if ms.is_none() {
-        eprintln!(
-            "VIctory: VICTORY_FRAME_INTERVAL_MS={spec}: expected milliseconds from 0 (no wait) to 1000"
-        );
+        eprintln!("VIctory: VICTORY_FRAME_INTERVAL_MS={spec}: expected milliseconds from 0 (no wait) to 1000");
     }
     ms
 }
 
 /// `16.667` â†’ 16.667; 0 is allowed (no wait), more than a second is not.
 pub fn parse_interval_ms(spec: &str) -> Option<f64> {
-    spec.trim()
-        .parse::<f64>()
-        .ok()
-        .filter(|ms| ms.is_finite() && (0.0..=1000.0).contains(ms))
+    spec.trim().parse::<f64>().ok().filter(|ms| ms.is_finite() && (0.0..=1000.0).contains(ms))
 }
 
 /// The frame rate the title is given for an interval: `1000 / ms` rounded
@@ -79,28 +74,17 @@ pub fn title_rate(interval_ms: f64, title_fps: Option<&str>) -> Option<u32> {
 /// The frame time the title derives from a rate, in microseconds, as its
 /// code computes it (single-precision division, truncated).
 pub fn title_frame_us(rate: u32) -> u32 {
-    let clamped = if rate == 0 || rate >= 1000 {
-        1000
-    } else {
-        rate
-    };
+    let clamped = if rate == 0 || rate >= 1000 { 1000 } else { rate };
     (1_000_000.0_f32 / clamped as f32) as u32
 }
 
 /// The interval the title then asks for (`SetFrameIntervalX`), in
 /// microseconds, on a display of 60 Hz (or 120 Hz).
 pub fn title_interval_us(rate: u32, display_120: bool) -> u32 {
-    const TABLE: [[u32; 5]; 2] = [
-        [16667, 16667, 33333, 50000, 66667],
-        [8333, 8333, 16667, 25000, 33333],
-    ];
+    const TABLE: [[u32; 5]; 2] = [[16667, 16667, 33333, 50000, 66667], [8333, 8333, 16667, 25000, 33333]];
     let fps = (1_000_000.0_f32 / title_frame_us(rate) as f32) as u32 & 0xffff;
     let display = if display_120 { 120 } else { 60 };
-    let index = if fps <= display {
-        (display / fps.max(1)).min(4)
-    } else {
-        1
-    };
+    let index = if fps <= display { (display / fps.max(1)).min(4) } else { 1 };
     TABLE[usize::from(display_120)][index as usize]
 }
 
@@ -132,9 +116,8 @@ pub const SITES: [Site; 3] = [
         at: 0x1e0fc62,
         kind: Kind::Load,
         bytes: &[
-            0x8b, 0x87, 0x10, 0x02, 0x00, 0x00, 0xba, 0xe8, 0x03, 0x00, 0x00, 0xc5, 0xfa, 0x10,
-            0x0d, 0x9f, 0xa1, 0x34, 0x04, 0xb9, 0xe8, 0x03, 0x00, 0x00, 0x3d, 0xe8, 0x03, 0x00,
-            0x00, 0x0f, 0x42, 0xd0, 0x85, 0xc0, 0x0f, 0x44, 0xd1, 0xc5, 0xea, 0x2a, 0xc2, 0xc5,
+            0x8b, 0x87, 0x10, 0x02, 0x00, 0x00, 0xba, 0xe8, 0x03, 0x00, 0x00, 0xc5, 0xfa, 0x10, 0x0d, 0x9f, 0xa1, 0x34, 0x04, 0xb9, 0xe8,
+            0x03, 0x00, 0x00, 0x3d, 0xe8, 0x03, 0x00, 0x00, 0x0f, 0x42, 0xd0, 0x85, 0xc0, 0x0f, 0x44, 0xd1, 0xc5, 0xea, 0x2a, 0xc2, 0xc5,
             0xf2, 0x5e, 0xc0, 0xc4, 0xe1, 0xfa, 0x2c, 0xc0, 0x89, 0x05, 0x12, 0x88, 0xae, 0x07,
         ],
     },
@@ -143,11 +126,9 @@ pub const SITES: [Site; 3] = [
         at: 0x224359a,
         kind: Kind::Load,
         bytes: &[
-            0x8b, 0x86, 0x10, 0x02, 0x00, 0x00, 0xba, 0xe8, 0x03, 0x00, 0x00, 0xc5, 0xfa, 0x10,
-            0x0d, 0x67, 0x68, 0xf1, 0x03, 0xb9, 0xe8, 0x03, 0x00, 0x00, 0x3d, 0xe8, 0x03, 0x00,
-            0x00, 0x0f, 0x42, 0xd0, 0x85, 0xc0, 0x0f, 0x44, 0xd1, 0xb1, 0xff, 0xc5, 0xea, 0x2a,
-            0xc2, 0xc5, 0xf2, 0x5e, 0xc0, 0xc4, 0xe1, 0xfa, 0x2c, 0xc0, 0x89, 0x05, 0xd8, 0x4e,
-            0x6b, 0x07,
+            0x8b, 0x86, 0x10, 0x02, 0x00, 0x00, 0xba, 0xe8, 0x03, 0x00, 0x00, 0xc5, 0xfa, 0x10, 0x0d, 0x67, 0x68, 0xf1, 0x03, 0xb9, 0xe8,
+            0x03, 0x00, 0x00, 0x3d, 0xe8, 0x03, 0x00, 0x00, 0x0f, 0x42, 0xd0, 0x85, 0xc0, 0x0f, 0x44, 0xd1, 0xb1, 0xff, 0xc5, 0xea, 0x2a,
+            0xc2, 0xc5, 0xf2, 0x5e, 0xc0, 0xc4, 0xe1, 0xfa, 0x2c, 0xc0, 0x89, 0x05, 0xd8, 0x4e, 0x6b, 0x07,
         ],
     },
     // +0x2241fd0: cmp dword [rax+210h], 0 ; je ; call ; mov eax, [rax+210h] ; vcvtsi2ss xmm0, xmm0, rax
@@ -155,8 +136,8 @@ pub const SITES: [Site; 3] = [
         at: 0x2241fdb,
         kind: Kind::SimRate,
         bytes: &[
-            0x83, 0xb8, 0x10, 0x02, 0x00, 0x00, 0x00, 0x74, 0x12, 0xe8, 0xc7, 0xa1, 0xe0, 0x02,
-            0x8b, 0x80, 0x10, 0x02, 0x00, 0x00, 0xc4, 0xe1, 0xfa, 0x2a, 0xc0,
+            0x83, 0xb8, 0x10, 0x02, 0x00, 0x00, 0x00, 0x74, 0x12, 0xe8, 0xc7, 0xa1, 0xe0, 0x02, 0x8b, 0x80, 0x10, 0x02, 0x00, 0x00, 0xc4,
+            0xe1, 0xfa, 0x2a, 0xc0,
         ],
     },
 ];
@@ -167,9 +148,7 @@ pub const FRAME_US: usize = 0x98f84ac;
 pub const LIMITER_ON: usize = 0x7453ec9;
 /// The title's timers (each set up at +0x22261a9 with a step of 0.05 s and
 /// 50 ms): +0 and +4 times, +0xc the step in seconds, +0x10 in milliseconds.
-pub const TIMERS: [usize; 7] = [
-    0xa943788, 0x856c6b4, 0xabbef40, 0xa958358, 0xa958380, 0x74fa558, 0xa943768,
-];
+pub const TIMERS: [usize; 7] = [0xa943788, 0x856c6b4, 0xabbef40, 0xa958358, 0xa958380, 0x74fa558, 0xa943768];
 
 /// What goes at a site of `kind` for `rate`.
 pub fn replacement(kind: Kind, rate: u32) -> Vec<u8> {
@@ -286,6 +265,7 @@ mod tests {
         assert_eq!(title_interval_us(20, false), 50000);
     }
 
+
     #[test]
     fn the_sites_are_reads_of_the_setting() {
         for site in SITES.iter().filter(|s| s.kind == Kind::Load) {
@@ -295,10 +275,7 @@ mod tests {
             assert_eq!(&site.bytes[2..6], &[0x10, 0x02, 0x00, 0x00]);
             // mov edx, 1000 follows; the window ends with the store of eax.
             assert_eq!(&site.bytes[6..11], &[0xba, 0xe8, 0x03, 0x00, 0x00]);
-            assert_eq!(
-                &site.bytes[site.bytes.len() - 6..site.bytes.len() - 4],
-                &[0x89, 0x05]
-            );
+            assert_eq!(&site.bytes[site.bytes.len() - 6..site.bytes.len() - 4], &[0x89, 0x05]);
             // RIP-relative: the store is of +0x98f84ac.
             let disp = i32::from_le_bytes(site.bytes[site.bytes.len() - 4..].try_into().unwrap());
             let end = site.at + site.bytes.len();
@@ -310,11 +287,7 @@ mod tests {
         assert_eq!(&sim.bytes[14..20], &[0x8b, 0x80, 0x10, 0x02, 0x00, 0x00]);
         assert_eq!(&sim.bytes[20..], &[0xc4, 0xe1, 0xfa, 0x2a, 0xc0]);
         let code = replacement(Kind::SimRate, 60);
-        assert_eq!(
-            code.len() + usize::from(code[6]),
-            20,
-            "the jump lands on the vcvtsi2ss"
-        );
+        assert_eq!(code.len() + usize::from(code[6]), 20, "the jump lands on the vcvtsi2ss");
         assert_eq!(replacement(Kind::Load, 60), [0xb8, 60, 0, 0, 0, 0x90]);
         assert_eq!(replacement(Kind::SimRate, 0)[1..5], 1000u32.to_le_bytes());
     }
@@ -322,17 +295,10 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn sites_take_the_rate_and_others_are_left_alone() {
-        use windows_sys::Win32::System::Memory::{
-            MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_EXECUTE_READWRITE, VirtualAlloc, VirtualFree,
-        };
+        use windows_sys::Win32::System::Memory::{MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_EXECUTE_READWRITE, VirtualAlloc, VirtualFree};
         // SAFETY: fresh memory of our own, written and run inside it.
         unsafe {
-            let place = VirtualAlloc(
-                std::ptr::null(),
-                0x10000,
-                MEM_COMMIT | MEM_RESERVE,
-                PAGE_EXECUTE_READWRITE,
-            ) as *mut u8;
+            let place = VirtualAlloc(std::ptr::null(), 0x10000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) as *mut u8;
             assert!(!place.is_null());
             let bytes = SITES[0].bytes;
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), place.add(0x100), bytes.len());
@@ -350,26 +316,10 @@ mod tests {
             f.push(0xc3);
             std::ptr::copy_nonoverlapping(f.as_ptr(), place.add(0x300), f.len());
             let mine = [
-                Site {
-                    at: 0x100,
-                    kind: Kind::Load,
-                    bytes,
-                },
-                Site {
-                    at: 0x200,
-                    kind: Kind::Load,
-                    bytes: SITES[1].bytes,
-                },
-                Site {
-                    at: 0x300 + window_at,
-                    kind: Kind::SimRate,
-                    bytes: sim,
-                },
-                Site {
-                    at: 0xfff0,
-                    kind: Kind::Load,
-                    bytes,
-                },
+                Site { at: 0x100, kind: Kind::Load, bytes },
+                Site { at: 0x200, kind: Kind::Load, bytes: SITES[1].bytes },
+                Site { at: 0x300 + window_at, kind: Kind::SimRate, bytes: sim },
+                Site { at: 0xfff0, kind: Kind::Load, bytes },
             ];
             let done = apply(place as usize, 0x10000, 60, &mine);
             assert_eq!(done[..3], [Patched::Done, Patched::Differs, Patched::Done]);
@@ -377,10 +327,7 @@ mod tests {
             let after = std::slice::from_raw_parts(place.add(0x100), bytes.len());
             assert_eq!(after[..6], replacement(Kind::Load, 60)[..]);
             assert_eq!(after[6..], bytes[6..]);
-            assert_eq!(
-                std::slice::from_raw_parts(place.add(0x200), other.len()),
-                &other[..]
-            );
+            assert_eq!(std::slice::from_raw_parts(place.add(0x200), other.len()), &other[..]);
             let rate: extern "system" fn() -> f32 = std::mem::transmute(place.add(0x300));
             assert_eq!(rate(), 60.0);
             VirtualFree(place.cast(), 0, MEM_RELEASE);

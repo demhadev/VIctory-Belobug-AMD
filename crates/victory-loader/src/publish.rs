@@ -22,7 +22,10 @@ pub fn write_if_changed(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         .and_then(|name| name.to_str())
         .unwrap_or("image");
     let sequence = NEXT_STAGING.fetch_add(1, Ordering::Relaxed);
-    let staging = path.with_file_name(format!(".{name}.{}.{sequence}.tmp", std::process::id()));
+    let staging = path.with_file_name(format!(
+        ".{name}.{}.{sequence}.tmp",
+        std::process::id()
+    ));
     std::fs::write(&staging, bytes)?;
     if let Err(error) = std::fs::rename(&staging, path) {
         let _ = std::fs::remove_file(&staging);
@@ -56,10 +59,7 @@ mod tests {
             .filter_map(|entry| entry.ok())
             .filter(|entry| entry.path() != path)
             .collect();
-        assert!(
-            leftovers.is_empty(),
-            "staging files were removed: {leftovers:?}"
-        );
+        assert!(leftovers.is_empty(), "staging files were removed: {leftovers:?}");
     }
 
     #[test]
