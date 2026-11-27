@@ -7,7 +7,7 @@ use std::ffi::{CStr, c_void};
 use std::sync::Once;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::record::{kernel, on, semaphore_made, signalled, standing, stood_at, ticks, wait_began, wait_ended, waited, woken};
+use super::record::{kernel, on, semaphore_made, semaphore_taken, signalled, standing, stood_at, ticks, wait_began, wait_ended, waited, woken};
 
 type Handle = *mut c_void;
 
@@ -20,6 +20,45 @@ macro_rules! first_arg {
 
 /// The wrapped functions that wait, by their place in the table.
 const WAITS: [usize; 12] = [0, 1, 2, 3, 7, 9, 11, 13, 16, 17, 20, 27];
+
+/// The wrapped waits whose success takes one count of a semaphore
+/// (`WaitForSingleObject`, `WaitForSingleObjectEx`).
+const TAKES: [usize; 2] = [0, 1];
+
+/// What a wrapped function returned, as a number (0 for none).
+trait Code {
+    fn code(&self) -> u64;
+}
+impl Code for () {
+    fn code(&self) -> u64 {
+        0
+    }
+}
+impl Code for u32 {
+    fn code(&self) -> u64 {
+        u64::from(*self)
+    }
+}
+impl Code for i32 {
+    fn code(&self) -> u64 {
+        *self as u32 as u64
+    }
+}
+impl Code for u8 {
+    fn code(&self) -> u64 {
+        u64::from(*self)
+    }
+}
+impl Code for usize {
+    fn code(&self) -> u64 {
+        *self as u64
+    }
+}
+impl Code for Handle {
+    fn code(&self) -> u64 {
+        *self as usize as u64
+    }
+}
 
 /// The wrapped functions that make an object, noted between windows too.
 const MADE_ALWAYS: [usize; 3] = [29, 30, 31];
@@ -65,6 +104,9 @@ macro_rules! wrapped {
                             // SAFETY: the caller's own call.
                             let result = unsafe { real($($arg),*) };
                             wait_ended();
+                            if TAKES.contains(&$index) {
+                                semaphore_taken(first_arg!($($arg),*) as usize as u64, Code::code(&result));
+                            }
                             return result;
                         }
                         if SIGNALS_OBJECT.contains(&$index) {
@@ -73,7 +115,11 @@ macro_rules! wrapped {
                         // SAFETY: the caller's own call.
                         return unsafe { real($($arg),*) };
                     }
-                    ($body)(real)
+                    let result = ($body)(real);
+                    if TAKES.contains(&$index) {
+                        semaphore_taken(first_arg!($($arg),*) as usize as u64, Code::code(&result));
+                    }
+                    result
                 }
             )*
         }

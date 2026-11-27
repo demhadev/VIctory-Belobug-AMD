@@ -843,6 +843,12 @@ struct Made {
     thread: AtomicU32,
     counts: std::sync::atomic::AtomicU64,
     frames: [AtomicUsize; MADE_FRAMES],
+    /// Successful waits on it (a count taken each), the last taker, when,
+    /// and its return addresses.
+    taken: AtomicU32,
+    taker: AtomicU32,
+    taken_at: std::sync::atomic::AtomicU64,
+    taker_frames: [AtomicUsize; MADE_FRAMES],
 }
 
 const MADE_FRAMES: usize = 8;
@@ -853,6 +859,10 @@ static MADE: [Made; MADE_SLOTS] = [const {
         thread: AtomicU32::new(0),
         counts: std::sync::atomic::AtomicU64::new(0),
         frames: [const { AtomicUsize::new(0) }; MADE_FRAMES],
+        taken: AtomicU32::new(0),
+        taker: AtomicU32::new(0),
+        taken_at: std::sync::atomic::AtomicU64::new(0),
+        taker_frames: [const { AtomicUsize::new(0) }; MADE_FRAMES],
     }
 }; MADE_SLOTS];
 
@@ -900,7 +910,36 @@ pub(super) fn semaphore_made(object: u64, initial: i32, most: i32) {
         for (to, from) in slot.frames.iter().zip(frames) {
             to.store(from, Ordering::Relaxed);
         }
+        slot.taken.store(0, Ordering::Relaxed);
+        slot.taker.store(0, Ordering::Relaxed);
     }
+}
+
+/// A wait on `object` returned `code`: 0 (`WAIT_OBJECT_0`) on a semaphore
+/// we saw made took one of its counts, and is noted with its stack.
+pub(super) fn semaphore_taken(object: u64, code: u64) {
+    if code != 0 {
+        return;
+    }
+    let Some(slot) = made_slot(object, false) else {
+        return;
+    };
+    let mut frames = [0usize; MADE_FRAMES];
+    // SAFETY: room for that many return addresses.
+    unsafe {
+        windows_sys::Win32::System::Diagnostics::Debug::RtlCaptureStackBackTrace(
+            2,
+            MADE_FRAMES as u32,
+            frames.as_mut_ptr().cast(),
+            std::ptr::null_mut(),
+        );
+    }
+    slot.taker.store(thread(), Ordering::Relaxed);
+    slot.taken_at.store(ticks(), Ordering::Relaxed);
+    for (to, from) in slot.taker_frames.iter().zip(frames) {
+        to.store(from, Ordering::Relaxed);
+    }
+    slot.taken.fetch_add(1, Ordering::Relaxed);
 }
 
 /// `address` as `module+offset`.
@@ -942,13 +981,32 @@ fn made_text(object: u64) -> String {
         .filter(|&f| f != 0)
         .map(where_is)
         .collect();
-    format!(
+    let mut text = format!(
         "; made by thread {} with count {} of at most {}, at {}",
         slot.thread.load(Ordering::Relaxed),
         (counts >> 32) as u32 as i32,
         counts as u32 as i32,
         frames.join(" < ")
-    )
+    );
+    let taken = slot.taken.load(Ordering::Relaxed);
+    if taken == 0 {
+        text.push_str("; never taken by a wait we saw");
+    } else {
+        let ago = micros(ticks().saturating_sub(slot.taken_at.load(Ordering::Relaxed))) as f64 / 1e6;
+        let taker: Vec<String> = slot
+            .taker_frames
+            .iter()
+            .map(|f| f.load(Ordering::Relaxed))
+            .filter(|&f| f != 0)
+            .map(where_is)
+            .collect();
+        text.push_str(&format!(
+            "; taken {taken} times, last by thread {} {ago:.1} s ago, at {}",
+            slot.taker.load(Ordering::Relaxed),
+            taker.join(" < ")
+        ));
+    }
+    text
 }
 
 /// What kind of kernel object the handle `object` is (`NtQueryObject`), and
