@@ -3,6 +3,11 @@
 # -Safe         without the newer, faster ways (the first thing to try when something is wrong)
 # -RayTracing   the title's own ray-traced indirect light: lit interiors, about a third slower
 # -Fsr4K        PC FidelityFX at 3840x2160 (quality, balanced or performance): FSR 4.1.2 where AMD's SDK offers it for the card, FSR 3.1 otherwise
+# -Console      series-x (the default) or series-s: the console model the title sees; Series S
+#               renders 1080p and needs less memory (the one to use with 32 GB of RAM)
+# -Rdna2        for an AMD RDNA 2 card (RX 6800 XT and its kin): windows of title memory in card
+#               memory the CPU maps (VICTORY_WINDOWS_BAR_MB=1024); needs Smart Access Memory on,
+#               and does nothing without it
 # -Build        target\diag (the default, the build all measurements are of) or target\release
 #               Light DRED is requested by default for diag and requires --features diagnostics.
 # -More         other settings: -More @{VICTORY_PANEL='1'}
@@ -12,6 +17,8 @@ param(
     [switch]$Safe,
     [switch]$RayTracing,
     [ValidateSet('quality', 'balanced', 'performance')][string]$Fsr4K,
+    [ValidateSet('series-x', 'series-s')][string]$Console = 'series-x',
+    [switch]$Rdna2,
     [ValidateSet('diag', 'release')][string]$Build = 'diag',
     [hashtable]$More = @{}
 )
@@ -28,6 +35,7 @@ if ($Safe) {
     $settings.VICTORY_THIN = '1'; $settings.VICTORY_JOIN_PARTS = '8'; $settings.VICTORY_UPLOAD_AHEAD = '1'
 }
 if ($RayTracing) { $settings.VICTORY_BVH_BUILDER = '1' }
+if ($Rdna2) { $settings.VICTORY_WINDOWS_BAR_MB = '1024' }
 if ($Fsr4K) { $settings.VICTORY_FSR_4K = $Fsr4K.ToLowerInvariant() }
 foreach ($k in $More.Keys) { $settings[$k] = $More[$k] }
 
@@ -47,4 +55,4 @@ if ($discarded) {
 }
 $Exe = (Resolve-Path $Exe).Path
 Push-Location (Join-Path $PSScriptRoot '..')   # victory.toml is looked for here
-try { & $victory run $Exe --execute } finally { Pop-Location }
+try { & $victory run $Exe --console $Console --execute } finally { Pop-Location }
