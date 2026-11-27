@@ -37,7 +37,8 @@ fn asked(list: &str) -> Option<(Duration, Duration, Duration, String)> {
     let (from, to, ms) = (seconds()?, seconds()?, seconds()?);
     let of = |s: f64| Duration::try_from_secs_f64(s).ok();
     let file = parts.next()?.trim().to_string();
-    Some((of(from)?, of(to)?, of(ms / 1000.0)?, file)).filter(|(a, b, ms, f)| a < b && !ms.is_zero() && !f.is_empty())
+    Some((of(from)?, of(to)?, of(ms / 1000.0)?, file))
+        .filter(|(a, b, ms, f)| a < b && !ms.is_zero() && !f.is_empty())
 }
 
 struct Thread {
@@ -119,7 +120,11 @@ pub fn profile_on_schedule(phase: fn() -> u32) {
     });
 }
 
-fn profile((from, to, every, file): (Duration, Duration, Duration, String), start: Instant, phase: fn() -> u32) {
+fn profile(
+    (from, to, every, file): (Duration, Duration, Duration, String),
+    start: Instant,
+    phase: fn() -> u32,
+) {
     std::thread::sleep(from.saturating_sub(start.elapsed()));
     match turn(from, to, start.elapsed()) {
         Turn::Elapsed => {
@@ -192,13 +197,26 @@ fn choose(threads: &mut HashMap<u32, Thread>, chosen: &mut Vec<u32>) {
         threads.entry(id).or_insert_with(|| {
             // SAFETY: opens a thread of our own process; kept open for the
             // profile's life, so the id stays its own.
-            let handle =
-                unsafe { OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, 0, id) };
+            let handle = unsafe {
+                OpenThread(
+                    THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION,
+                    0,
+                    id,
+                )
+            };
             let first = if handle.is_null() { 0 } else { cpu(handle) };
             Thread {
                 handle,
-                start: if handle.is_null() { String::new() } else { locate(start_of(handle)) },
-                name: if handle.is_null() { String::new() } else { name_of(handle) },
+                start: if handle.is_null() {
+                    String::new()
+                } else {
+                    locate(start_of(handle))
+                },
+                name: if handle.is_null() {
+                    String::new()
+                } else {
+                    name_of(handle)
+                },
                 first,
                 last: first,
                 now: first,
@@ -230,7 +248,14 @@ fn write(
     }
     let mut names: HashMap<u64, String> = HashMap::new();
     for (id, t) in threads {
-        writeln!(out, "thread {id} {} {} {} {}", t.start, (t.now - t.first) / 10_000, t.samples, t.name)?;
+        writeln!(
+            out,
+            "thread {id} {} {} {} {}",
+            t.start,
+            (t.now - t.first) / 10_000,
+            t.samples,
+            t.name
+        )?;
         if !t.handle.is_null() {
             // SAFETY: opened by `choose`.
             unsafe { CloseHandle(t.handle) };
@@ -341,7 +366,8 @@ mod tests {
     #[test]
     fn a_window_that_has_already_passed_leaves_an_earlier_file_alone() {
         let file = temp_file("victory-profile-stale.txt");
-        std::fs::write(&file, "rounds 99\nfrom an earlier run\n").expect("the earlier file is written");
+        std::fs::write(&file, "rounds 99\nfrom an earlier run\n")
+            .expect("the earlier file is written");
         let start = Instant::now() - Duration::from_millis(200);
         profile(
             (

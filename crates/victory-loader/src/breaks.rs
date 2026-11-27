@@ -17,7 +17,9 @@ use windows_sys::Win32::System::Diagnostics::Debug::{
     AddVectoredExceptionHandler, EXCEPTION_POINTERS, FlushInstructionCache,
 };
 use windows_sys::Win32::System::Memory::{PAGE_EXECUTE_READWRITE, VirtualProtect};
-use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetCurrentThreadId, GetCurrentThreadStackLimits};
+use windows_sys::Win32::System::Threading::{
+    GetCurrentProcess, GetCurrentThreadId, GetCurrentThreadStackLimits,
+};
 
 use crate::crash::{MAX_FRAMES, locate, unwind_into};
 
@@ -43,7 +45,13 @@ fn parse(value: &str) -> Vec<usize> {
         .split(',')
         .filter_map(|s| {
             let s = s.trim();
-            usize::from_str_radix(s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s), 16).ok()
+            usize::from_str_radix(
+                s.strip_prefix("0x")
+                    .or_else(|| s.strip_prefix("0X"))
+                    .unwrap_or(s),
+                16,
+            )
+            .ok()
         })
         .take(MOST)
         .collect()
@@ -71,7 +79,10 @@ pub(crate) fn start(base: usize) {
         tracing::warn!(value, "VICTORY_BREAK: no address parsed");
         return;
     }
-    if let Some(n) = std::env::var("VICTORY_BREAK_MAX").ok().and_then(|v| v.trim().parse::<u64>().ok()) {
+    if let Some(n) = std::env::var("VICTORY_BREAK_MAX")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+    {
         LOGGED_MOST.store(n, Ordering::Relaxed);
     }
     BASE.store(base, Ordering::Relaxed);
@@ -82,9 +93,13 @@ pub(crate) fn start(base: usize) {
         let mut old = 0;
         // SAFETY: a page of the title's mapped image, made writable for the
         // breakpoint and left executable.
-        let writable = unsafe { VirtualProtect(at as *const _, 1, PAGE_EXECUTE_READWRITE, &mut old) } != 0;
+        let writable =
+            unsafe { VirtualProtect(at as *const _, 1, PAGE_EXECUTE_READWRITE, &mut old) } != 0;
         if !writable {
-            tracing::warn!(rva = format_args!("{rva:#x}"), "VICTORY_BREAK: the code could not be made writable");
+            tracing::warn!(
+                rva = format_args!("{rva:#x}"),
+                "VICTORY_BREAK: the code could not be made writable"
+            );
             continue;
         }
         // SAFETY: as above; the original byte is kept to put back.
@@ -93,20 +108,32 @@ pub(crate) fn start(base: usize) {
         AT[slot].store(at, Ordering::Release);
         // SAFETY: as above.
         unsafe { poke(at, 0xCC) };
-        tracing::info!(rva = format_args!("{rva:#x}"), original = format_args!("{byte:#04x}"), "VICTORY_BREAK: set");
+        tracing::info!(
+            rva = format_args!("{rva:#x}"),
+            original = format_args!("{byte:#04x}"),
+            "VICTORY_BREAK: set"
+        );
     }
-    let spawned = std::thread::Builder::new().name("victory-breaks".into()).spawn(|| {
-        loop {
-            std::thread::sleep(std::time::Duration::from_secs(5));
-            let counts: Vec<String> = (0..MOST)
-                .filter_map(|i| {
-                    let at = AT[i].load(Ordering::Relaxed);
-                    (at != 0).then(|| format!("{:#x}: {}", at - BASE.load(Ordering::Relaxed), HITS[i].load(Ordering::Relaxed)))
-                })
-                .collect();
-            tracing::info!("VICTORY_BREAK hits so far: {}", counts.join(", "));
-        }
-    });
+    let spawned = std::thread::Builder::new()
+        .name("victory-breaks".into())
+        .spawn(|| {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                let counts: Vec<String> = (0..MOST)
+                    .filter_map(|i| {
+                        let at = AT[i].load(Ordering::Relaxed);
+                        (at != 0).then(|| {
+                            format!(
+                                "{:#x}: {}",
+                                at - BASE.load(Ordering::Relaxed),
+                                HITS[i].load(Ordering::Relaxed)
+                            )
+                        })
+                    })
+                    .collect();
+                tracing::info!("VICTORY_BREAK hits so far: {}", counts.join(", "));
+            }
+        });
     if let Err(e) = spawned {
         tracing::warn!(error = %e, "VICTORY_BREAK: no thread for the counts");
     }
@@ -138,7 +165,11 @@ unsafe extern "system" fn handler(info: *mut EXCEPTION_POINTERS) -> i32 {
         unsafe { GetCurrentThreadStackLimits(&mut low, &mut high) };
         let mut frames = Vec::with_capacity(MAX_FRAMES);
         unwind_into(*context, low, high, &mut frames, true);
-        let stack: Vec<String> = frames.iter().take(16).map(|&f| locate(f as usize)).collect();
+        let stack: Vec<String> = frames
+            .iter()
+            .take(16)
+            .map(|&f| locate(f as usize))
+            .collect();
         // SAFETY: a plain query.
         let thread = unsafe { GetCurrentThreadId() };
         tracing::info!(

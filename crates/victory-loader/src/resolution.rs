@@ -41,7 +41,13 @@
 use crate::frame_rate::Patched;
 
 /// Sizes the title has a display mode for (its own list, +0x615c0c0).
-pub const MODES: [(u32, u32); 5] = [(1280, 720), (1664, 936), (1920, 1080), (2560, 1440), (3840, 2160)];
+pub const MODES: [(u32, u32); 5] = [
+    (1280, 720),
+    (1664, 936),
+    (1920, 1080),
+    (2560, 1440),
+    (3840, 2160),
+];
 
 /// `VICTORY_OUTPUT=<w>x<h>`: one of [`MODES`]. `None` if unset or not one
 /// (said why).
@@ -49,7 +55,9 @@ pub fn asked_output() -> Option<(u32, u32)> {
     let spec = std::env::var("VICTORY_OUTPUT").ok()?;
     let size = parse_output(&spec);
     if size.is_none() {
-        eprintln!("VIctory: VICTORY_OUTPUT={spec}: expected one of the title's modes: 1920x1080, 2560x1440, 1280x720, 1664x936, 3840x2160");
+        eprintln!(
+            "VIctory: VICTORY_OUTPUT={spec}: expected one of the title's modes: 1920x1080, 2560x1440, 1280x720, 1664x936, 3840x2160"
+        );
     }
     size
 }
@@ -75,7 +83,10 @@ pub fn asked_render_scale() -> Option<f32> {
 }
 
 pub fn parse_render_scale(spec: &str) -> Option<f32> {
-    spec.trim().parse::<f32>().ok().filter(|s| (0.5..=1.0).contains(s))
+    spec.trim()
+        .parse::<f32>()
+        .ok()
+        .filter(|s| (0.5..=1.0).contains(s))
 }
 
 /// `VICTORY_FFX_SCALE=<s>`, 0.5 to 1.0: FidelityFX's render scale (Series
@@ -92,9 +103,15 @@ pub fn asked_ffx_scale() -> Option<f32> {
 /// `VICTORY_UPSCALER=<kind>`: 6 (the title's own) or 7 (FidelityFX).
 pub fn asked_upscaler() -> Option<u32> {
     let spec = std::env::var("VICTORY_UPSCALER").ok()?;
-    let kind = spec.trim().parse::<u32>().ok().filter(|k| matches!(k, 6 | 7));
+    let kind = spec
+        .trim()
+        .parse::<u32>()
+        .ok()
+        .filter(|k| matches!(k, 6 | 7));
     if kind.is_none() {
-        eprintln!("VIctory: VICTORY_UPSCALER={spec}: expected 6 (the title's own) or 7 (FidelityFX)");
+        eprintln!(
+            "VIctory: VICTORY_UPSCALER={spec}: expected 6 (the title's own) or 7 (FidelityFX)"
+        );
     }
     kind
 }
@@ -166,12 +183,13 @@ pub const FFX_SCALE: Site = Site {
     at: 0x28ef680,
     what: "FidelityFX's render scale",
     bytes: &[
-        0x41, 0x56, 0x56, 0x57, 0x53, 0x48, 0x83, 0xec, 0x28, 0x44, 0x89, 0xcb, 0x4c, 0x89, 0xc6, 0x48, 0x89, 0xd7, 0x49, 0x89,
-        0xce, 0xe8, 0xa6, 0x5a, 0x78, 0xfd, 0x0f, 0xb6, 0xc0, 0x41, 0x89, 0x86, 0x90, 0x00, 0x00, 0x00, 0x84, 0xc0, 0x75, 0x0a,
-        0xc5, 0xfa, 0x10, 0x05, 0x28, 0x78, 0x6d, 0x03, 0xeb, 0x08, 0xc5, 0xfa, 0x10, 0x05, 0xa2, 0xe2, 0x86, 0x03, 0xc5, 0xf2,
-        0x2a, 0x54, 0x24, 0x70, 0xc5, 0xf2, 0x2a, 0xcb, 0xc5, 0xfa, 0x59, 0xc9, 0xc5, 0xfa, 0x2c, 0xc1, 0x89, 0x07, 0xc5, 0xfa,
-        0x59, 0xc2, 0xc5, 0xfa, 0x2c, 0xc0, 0x89, 0x06, 0x48, 0x83, 0xc4, 0x28, 0x5b, 0x5f, 0x5e, 0x41, 0x5e, 0xc3, 0xcc, 0xcc,
-        0xcc, 0xcc, 0xcc, 0xcc,
+        0x41, 0x56, 0x56, 0x57, 0x53, 0x48, 0x83, 0xec, 0x28, 0x44, 0x89, 0xcb, 0x4c, 0x89, 0xc6,
+        0x48, 0x89, 0xd7, 0x49, 0x89, 0xce, 0xe8, 0xa6, 0x5a, 0x78, 0xfd, 0x0f, 0xb6, 0xc0, 0x41,
+        0x89, 0x86, 0x90, 0x00, 0x00, 0x00, 0x84, 0xc0, 0x75, 0x0a, 0xc5, 0xfa, 0x10, 0x05, 0x28,
+        0x78, 0x6d, 0x03, 0xeb, 0x08, 0xc5, 0xfa, 0x10, 0x05, 0xa2, 0xe2, 0x86, 0x03, 0xc5, 0xf2,
+        0x2a, 0x54, 0x24, 0x70, 0xc5, 0xf2, 0x2a, 0xcb, 0xc5, 0xfa, 0x59, 0xc9, 0xc5, 0xfa, 0x2c,
+        0xc1, 0x89, 0x07, 0xc5, 0xfa, 0x59, 0xc2, 0xc5, 0xfa, 0x2c, 0xc0, 0x89, 0x06, 0x48, 0x83,
+        0xc4, 0x28, 0x5b, 0x5f, 0x5e, 0x41, 0x5e, 0xc3, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc,
     ],
 };
 
@@ -180,9 +198,10 @@ pub const PICKER: Site = Site {
     at: 0x7e93f0,
     what: "upscaler picker",
     bytes: &[
-        0x48, 0x83, 0xec, 0x28, 0x80, 0x3d, 0x6d, 0xf0, 0x3a, 0x07, 0x00, 0x75, 0x09, 0x83, 0x3d, 0x68, 0xf0, 0x3a, 0x07, 0x00,
-        0x74, 0x28, 0xe8, 0x35, 0xbd, 0x88, 0xff, 0x8a, 0x0d, 0x5b, 0xf0, 0x3a, 0x07, 0x80, 0xe1, 0x40, 0x80, 0xf9, 0x01, 0xb9,
-        0x07, 0x00, 0x00, 0x00, 0x83, 0xd9, 0x00, 0x84, 0xc0, 0xb8, 0x06, 0x00, 0x00, 0x00, 0x0f, 0x45, 0xc1, 0x48, 0x83, 0xc4,
+        0x48, 0x83, 0xec, 0x28, 0x80, 0x3d, 0x6d, 0xf0, 0x3a, 0x07, 0x00, 0x75, 0x09, 0x83, 0x3d,
+        0x68, 0xf0, 0x3a, 0x07, 0x00, 0x74, 0x28, 0xe8, 0x35, 0xbd, 0x88, 0xff, 0x8a, 0x0d, 0x5b,
+        0xf0, 0x3a, 0x07, 0x80, 0xe1, 0x40, 0x80, 0xf9, 0x01, 0xb9, 0x07, 0x00, 0x00, 0x00, 0x83,
+        0xd9, 0x00, 0x84, 0xc0, 0xb8, 0x06, 0x00, 0x00, 0x00, 0x0f, 0x45, 0xc1, 0x48, 0x83, 0xc4,
         0x28, 0xc3,
     ],
 };
@@ -249,12 +268,21 @@ pub fn picker_code(kind: u32) -> Vec<u8> {
 /// # Safety
 /// The image is mapped.
 pub unsafe fn matches(base: usize, size: usize, site: &Site) -> Patched {
-    if site.at.checked_add(site.bytes.len()).is_none_or(|end| end > size) {
+    if site
+        .at
+        .checked_add(site.bytes.len())
+        .is_none_or(|end| end > size)
+    {
         return Patched::Failed("outside the image");
     }
     // SAFETY: inside the mapped image (checked above).
-    let there = unsafe { std::slice::from_raw_parts((base + site.at) as *const u8, site.bytes.len()) };
-    if there == site.bytes { Patched::Done } else { Patched::Differs }
+    let there =
+        unsafe { std::slice::from_raw_parts((base + site.at) as *const u8, site.bytes.len()) };
+    if there == site.bytes {
+        Patched::Done
+    } else {
+        Patched::Differs
+    }
 }
 
 /// Writes `code` over `site` if its bytes are the expected ones.
@@ -318,11 +346,20 @@ pub unsafe fn apply_asked(base: usize, size: usize) {
         let done = unsafe { write(base, size, site, &code) };
         let offset = format!("{:#x}", site.at);
         match done {
-            Patched::Done => tracing::info!(site = %offset, what = site.what, value, "resolution: patched"),
-            Patched::Differs => tracing::warn!(site = %offset, what = site.what, "resolution: not patched, the title's bytes there are not the ones expected (another build?)"),
-            Patched::Failed(why) => tracing::warn!(site = %offset, what = site.what, why, "resolution: not patched"),
+            Patched::Done => {
+                tracing::info!(site = %offset, what = site.what, value, "resolution: patched")
+            }
+            Patched::Differs => {
+                tracing::warn!(site = %offset, what = site.what, "resolution: not patched, the title's bytes there are not the ones expected (another build?)")
+            }
+            Patched::Failed(why) => {
+                tracing::warn!(site = %offset, what = site.what, why, "resolution: not patched")
+            }
         }
-        println!("resolution: {} ({value}) at title+{offset}: {done:?}", site.what);
+        println!(
+            "resolution: {} ({value}) at title+{offset}: {done:?}",
+            site.what
+        );
     }
 }
 
@@ -349,7 +386,12 @@ mod tests {
     fn the_output_block_is_the_titles() {
         let b = OUTPUT.bytes;
         assert_eq!(b.len(), 61);
-        let target = |op_end: usize| (OUTPUT.at + op_end) as i64 + i64::from(i32::from_le_bytes(b[op_end - 4..op_end].try_into().unwrap()));
+        let target = |op_end: usize| {
+            (OUTPUT.at + op_end) as i64
+                + i64::from(i32::from_le_bytes(
+                    b[op_end - 4..op_end].try_into().unwrap(),
+                ))
+        };
         assert_eq!(target(27), SET_SCREEN_SIZE as i64);
         assert_eq!(target(50), SET_SCREEN_SIZE as i64);
         assert_eq!(target(61), HEIGHT_CHANGED as i64);
@@ -370,7 +412,12 @@ mod tests {
         assert_eq!(c[5..11], [0x89, 0x86, 0x04, 0x02, 0x00, 0x00]);
         assert_eq!(c[12..16], 1080u32.to_le_bytes());
         assert_eq!(c[16..22], [0x89, 0xbe, 0x08, 0x02, 0x00, 0x00]);
-        let target = |op_end: usize| (OUTPUT.at + op_end) as i64 + i64::from(i32::from_le_bytes(c[op_end - 4..op_end].try_into().unwrap()));
+        let target = |op_end: usize| {
+            (OUTPUT.at + op_end) as i64
+                + i64::from(i32::from_le_bytes(
+                    c[op_end - 4..op_end].try_into().unwrap(),
+                ))
+        };
         assert_eq!(c[22..24], [0x8b, 0x2d]);
         assert_eq!(target(28), SCREEN_HEIGHT as i64);
         assert_eq!(c[32], 0xe8);
@@ -394,36 +441,78 @@ mod tests {
         assert_eq!(ffx.len(), FFX_SCALE.bytes.len());
         assert_eq!(ffx[0x64..0x68], 0.75f32.to_le_bytes());
         for at in [0x28, 0x32] {
-            assert_eq!(ffx[at..at + 4], [0xc5, 0xfa, 0x10, 0x05], "vmovss xmm0, [rip+d]");
+            assert_eq!(
+                ffx[at..at + 4],
+                [0xc5, 0xfa, 0x10, 0x05],
+                "vmovss xmm0, [rip+d]"
+            );
             let disp = i32::from_le_bytes(ffx[at + 4..at + 8].try_into().unwrap());
             assert_eq!(at as i32 + 8 + disp, 0x64);
         }
         // Only the two displacements and the padding change.
-        let changed: Vec<usize> = (0..ffx.len()).filter(|&i| ffx[i] != FFX_SCALE.bytes[i]).collect();
-        assert!(changed.iter().all(|&i| (0x2c..0x30).contains(&i) || (0x36..0x3a).contains(&i) || (0x64..0x68).contains(&i)));
+        let changed: Vec<usize> = (0..ffx.len())
+            .filter(|&i| ffx[i] != FFX_SCALE.bytes[i])
+            .collect();
+        assert!(changed.iter().all(|&i| (0x2c..0x30).contains(&i)
+            || (0x36..0x3a).contains(&i)
+            || (0x64..0x68).contains(&i)));
         assert_eq!(picker_code(7), [0xb8, 7, 0, 0, 0, 0xc3]);
-        assert_eq!(pool_check_code(), [0x48, 0x3d, 0xff, 0xff, 0x1f, 0x00, 0xeb, 0x01]);
+        assert_eq!(
+            pool_check_code(),
+            [0x48, 0x3d, 0xff, 0xff, 0x1f, 0x00, 0xeb, 0x01]
+        );
     }
 
     #[cfg(windows)]
     #[test]
     fn a_site_is_written_only_over_its_bytes() {
-        use windows_sys::Win32::System::Memory::{MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_EXECUTE_READ, VirtualAlloc, VirtualFree};
+        use windows_sys::Win32::System::Memory::{
+            MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_EXECUTE_READ, VirtualAlloc, VirtualFree,
+        };
         // SAFETY: fresh memory of our own, read-only to code as the image's is.
         unsafe {
-            let place = VirtualAlloc(std::ptr::null(), 0x1000, MEM_COMMIT | MEM_RESERVE, 0x40) as *mut u8;
+            let place =
+                VirtualAlloc(std::ptr::null(), 0x1000, MEM_COMMIT | MEM_RESERVE, 0x40) as *mut u8;
             assert!(!place.is_null());
-            let site = Site { at: 0x100, what: "test", bytes: OWN_SCALE.bytes };
+            let site = Site {
+                at: 0x100,
+                what: "test",
+                bytes: OWN_SCALE.bytes,
+            };
             std::ptr::copy_nonoverlapping(site.bytes.as_ptr(), place.add(0x100), site.bytes.len());
             let mut old = 0;
-            windows_sys::Win32::System::Memory::VirtualProtect(place.cast(), 0x1000, PAGE_EXECUTE_READ, &mut old);
-            assert_eq!(write(place as usize, 0x1000, &site, &own_scale_code(0.5)), Patched::Done);
-            assert_eq!(std::slice::from_raw_parts(place.add(0x106), 4), 0.5f32.to_le_bytes());
+            windows_sys::Win32::System::Memory::VirtualProtect(
+                place.cast(),
+                0x1000,
+                PAGE_EXECUTE_READ,
+                &mut old,
+            );
+            assert_eq!(
+                write(place as usize, 0x1000, &site, &own_scale_code(0.5)),
+                Patched::Done
+            );
+            assert_eq!(
+                std::slice::from_raw_parts(place.add(0x106), 4),
+                0.5f32.to_le_bytes()
+            );
             // Already changed: its bytes differ now, nothing is written again.
-            assert_eq!(write(place as usize, 0x1000, &site, &own_scale_code(0.75)), Patched::Differs);
-            assert_eq!(std::slice::from_raw_parts(place.add(0x106), 4), 0.5f32.to_le_bytes());
-            let far = Site { at: 0xffa, what: "test", bytes: OWN_SCALE.bytes };
-            assert!(matches!(write(place as usize, 0x1000, &far, &own_scale_code(0.5)), Patched::Failed(_)));
+            assert_eq!(
+                write(place as usize, 0x1000, &site, &own_scale_code(0.75)),
+                Patched::Differs
+            );
+            assert_eq!(
+                std::slice::from_raw_parts(place.add(0x106), 4),
+                0.5f32.to_le_bytes()
+            );
+            let far = Site {
+                at: 0xffa,
+                what: "test",
+                bytes: OWN_SCALE.bytes,
+            };
+            assert!(matches!(
+                write(place as usize, 0x1000, &far, &own_scale_code(0.5)),
+                Patched::Failed(_)
+            ));
             VirtualFree(place.cast(), 0, MEM_RELEASE);
         }
     }

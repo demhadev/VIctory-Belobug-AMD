@@ -89,6 +89,7 @@ pub fn load(prepared: &PreparedImage, dir: &Path) -> Result<LoadedImage> {
     if !loaded.info.is_dll() {
         crate::peek::start(loaded.base());
         crate::breaks::start(loaded.base());
+        crate::watch::start(loaded.base());
     }
     tracing::info!(
         base = format_args!("{:#x}", loaded.base()),

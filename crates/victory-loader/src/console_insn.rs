@@ -88,7 +88,11 @@ pub(crate) fn jump(at: usize, to: usize) -> Option<[u8; 5]> {
 /// register not `rax`), `None` for another form. (The scratch register is saved on the stack
 /// and back before the compare, whose register it may be.)
 fn clzero_stub(at: usize, stub: usize, cmp: [u8; 3]) -> Option<Vec<u8>> {
-    if !matches!(cmp[0], 0x48 | 0x4c) || cmp[1] != 0x39 || cmp[2] & 0xc7 != 0xc0 || (cmp[0] == 0x48 && cmp[2] == 0xc0) {
+    if !matches!(cmp[0], 0x48 | 0x4c)
+        || cmp[1] != 0x39
+        || cmp[2] & 0xc7 != 0xc0
+        || (cmp[0] == 0x48 && cmp[2] == 0xc0)
+    {
         return None;
     }
     let mut code = vec![
@@ -115,13 +119,26 @@ pub(crate) const STUBS_LEN: usize = 64 << 10;
 
 /// Memory for code within reach of a `jmp rel32` at `at`.
 pub(crate) fn near(at: usize) -> Option<usize> {
-    use windows_sys::Win32::System::Memory::{MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE, VirtualAlloc};
+    use windows_sys::Win32::System::Memory::{
+        MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE, VirtualAlloc,
+    };
     let at = at & !0xffff;
-    (0x10_0000..0x7000_0000).step_by(0x10_0000).flat_map(|d| [at.checked_sub(d), at.checked_add(d)]).flatten().find_map(|place| {
-        // SAFETY: reserves free memory at that address or fails.
-        let got = unsafe { VirtualAlloc(place as *const _, STUBS_LEN, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) } as usize;
-        (got != 0).then_some(got)
-    })
+    (0x10_0000..0x7000_0000)
+        .step_by(0x10_0000)
+        .flat_map(|d| [at.checked_sub(d), at.checked_add(d)])
+        .flatten()
+        .find_map(|place| {
+            // SAFETY: reserves free memory at that address or fails.
+            let got = unsafe {
+                VirtualAlloc(
+                    place as *const _,
+                    STUBS_LEN,
+                    MEM_COMMIT | MEM_RESERVE,
+                    PAGE_EXECUTE_READWRITE,
+                )
+            } as usize;
+            (got != 0).then_some(got)
+        })
 }
 
 /// Replaces the `clzero` loop at `at`, whose 12 bytes are `code`: whether it did.
@@ -206,7 +223,10 @@ unsafe fn patch<const N: usize>(at: usize, was: [u8; N], patch: [u8; N]) -> bool
                 // (Another thread's fault at the same place: done already.)
                 break true;
             }
-            let Some(new) = (bytes == was).then(|| with_patch(now, at, &patch)).flatten() else {
+            let Some(new) = (bytes == was)
+                .then(|| with_patch(now, at, &patch))
+                .flatten()
+            else {
                 break false;
             };
             let there = std::arch::x86_64::cmpxchg16b(word, now, new, SeqCst, SeqCst);
@@ -231,7 +251,16 @@ mod sites {
     /// Address, what is there (an index into [`NAMES`]), exceptions since the last line.
     static SITES: [(AtomicUsize, AtomicUsize, AtomicU64); 512] =
         [const { (AtomicUsize::new(0), AtomicUsize::new(0), AtomicU64::new(0)) }; 512];
-    const NAMES: [&str; 8] = ["other", "clwb", "monitorx", "mwaitx", "clzero", "clzero loop", "rdpru", "extrq/insertq"];
+    const NAMES: [&str; 8] = [
+        "other",
+        "clwb",
+        "monitorx",
+        "mwaitx",
+        "clzero",
+        "clzero loop",
+        "rdpru",
+        "extrq/insertq",
+    ];
     static LAST: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
     static PATCHED: AtomicU64 = AtomicU64::new(0);
 
@@ -254,7 +283,9 @@ mod sites {
         let mut i = (at ^ at >> 9) % SITES.len();
         for _ in 0..8 {
             let s = &SITES[i];
-            let there = s.0.compare_exchange(0, at, Relaxed, Relaxed).unwrap_or_else(|there| there);
+            let there =
+                s.0.compare_exchange(0, at, Relaxed, Relaxed)
+                    .unwrap_or_else(|there| there);
             if there == 0 || there == at {
                 s.1.store(kind, Relaxed);
                 s.2.fetch_add(1, Relaxed);
@@ -275,8 +306,11 @@ mod sites {
     }
 
     fn line(seconds: f64) {
-        let mut all: Vec<(u64, usize, usize)> =
-            SITES.iter().map(|s| (s.2.swap(0, Relaxed), s.0.load(Relaxed), s.1.load(Relaxed))).filter(|s| s.0 > 0).collect();
+        let mut all: Vec<(u64, usize, usize)> = SITES
+            .iter()
+            .map(|s| (s.2.swap(0, Relaxed), s.0.load(Relaxed), s.1.load(Relaxed)))
+            .filter(|s| s.0 > 0)
+            .collect();
         all.sort_unstable_by_key(|s| std::cmp::Reverse(s.0));
         let mut kinds = [0u64; NAMES.len()];
         for s in &all {
@@ -288,8 +322,11 @@ mod sites {
             .filter(|(_, n)| *n > 0)
             .map(|(name, n)| format!("{name} {:.0}", n as f64 / seconds))
             .collect();
-        let top: Vec<String> =
-            all.iter().take(8).map(|s| format!("{:#x} {} {:.0}", s.1, NAMES[s.2], s.0 as f64 / seconds)).collect();
+        let top: Vec<String> = all
+            .iter()
+            .take(8)
+            .map(|s| format!("{:#x} {} {:.0}", s.1, NAMES[s.2], s.0 as f64 / seconds))
+            .collect();
         tracing::info!(
             "console CPU instructions that fault, a second: {}; places replaced so far: {}; the busiest places: {}",
             kinds.join(", "),
@@ -300,13 +337,18 @@ mod sites {
 }
 
 fn readable(va: usize, bytes: usize) -> bool {
-    use windows_sys::Win32::System::Memory::{MEM_COMMIT, MEMORY_BASIC_INFORMATION, PAGE_GUARD, PAGE_NOACCESS, VirtualQuery};
+    use windows_sys::Win32::System::Memory::{
+        MEM_COMMIT, MEMORY_BASIC_INFORMATION, PAGE_GUARD, PAGE_NOACCESS, VirtualQuery,
+    };
     // SAFETY: plain data filled in by the query.
     let mut m: MEMORY_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
     // SAFETY: a valid out pointer of the right size.
     let found = unsafe { VirtualQuery(va as *const _, &mut m, size_of_val(&m)) } != 0;
     ASKED.fetch_add(1, Relaxed);
-    found && m.State == MEM_COMMIT && m.Protect & (PAGE_NOACCESS | PAGE_GUARD) == 0 && m.BaseAddress as usize + m.RegionSize >= va + bytes
+    found
+        && m.State == MEM_COMMIT
+        && m.Protect & (PAGE_NOACCESS | PAGE_GUARD) == 0
+        && m.BaseAddress as usize + m.RegionSize >= va + bytes
 }
 
 fn writable(va: usize, bytes: usize) -> bool {
@@ -320,12 +362,18 @@ fn writable(va: usize, bytes: usize) -> bool {
 /// on view memory opens as it does any write, and which is a crash otherwise (as the
 /// unchecked single-line emulation behind this one already is).
 fn writable_to(va: usize, end: usize) -> Option<usize> {
-    use windows_sys::Win32::System::Memory::{MEM_COMMIT, MEMORY_BASIC_INFORMATION, PAGE_EXECUTE_READWRITE, PAGE_READWRITE, VirtualQuery};
+    use windows_sys::Win32::System::Memory::{
+        MEM_COMMIT, MEMORY_BASIC_INFORMATION, PAGE_EXECUTE_READWRITE, PAGE_READWRITE, VirtualQuery,
+    };
     let remember = remembers();
     if remember {
         let (regions, answers) = WRITABLE.with(Cell::get);
         if let Some(&(_, to)) = regions.iter().find(|&&(from, to)| from <= va && va < to) {
-            let next = if answers >= ANSWERS { ([(0, 0); 4], 0) } else { (regions, answers + 1) };
+            let next = if answers >= ANSWERS {
+                ([(0, 0); 4], 0)
+            } else {
+                (regions, answers + 1)
+            };
             WRITABLE.with(|w| w.set(next));
             return Some(to.min(end));
         }
@@ -335,10 +383,14 @@ fn writable_to(va: usize, end: usize) -> Option<usize> {
     // SAFETY: a valid out pointer of the right size.
     let found = unsafe { VirtualQuery(va as *const _, &mut m, size_of_val(&m)) } != 0;
     ASKED.fetch_add(1, Relaxed);
-    if !found || m.State != MEM_COMMIT || m.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE) == 0 {
+    if !found || m.State != MEM_COMMIT || m.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE) == 0
+    {
         return None;
     }
-    let (from, to) = (m.BaseAddress as usize, m.BaseAddress as usize + m.RegionSize);
+    let (from, to) = (
+        m.BaseAddress as usize,
+        m.BaseAddress as usize + m.RegionSize,
+    );
     if remember {
         WRITABLE.with(|w| {
             let (mut regions, answers) = w.get();
@@ -359,7 +411,11 @@ fn writable_to(va: usize, end: usize) -> Option<usize> {
 pub(crate) unsafe fn emulate(ctx: &mut CONTEXT) -> i32 {
     let rip = ctx.Rip as usize;
     // The same few instructions fault again and again: their bytes are asked about once.
-    let known = if remembers() { CODE.with(Cell::get) } else { [(0, 0); 8] };
+    let known = if remembers() {
+        CODE.with(Cell::get)
+    } else {
+        [(0, 0); 8]
+    };
     let n = match known.iter().find(|&&(at, n)| at == rip && n > 0) {
         Some(&(_, n)) => n,
         None => {
@@ -378,8 +434,11 @@ pub(crate) unsafe fn emulate(ctx: &mut CONTEXT) -> i32 {
     };
     // SAFETY: `n` bytes at `rip` are readable.
     let code = unsafe { std::slice::from_raw_parts(rip as *const u8, n) };
-    let Some((what, len)) = decode::decode(code) else { return 0 };
-    static SEEN: std::sync::Mutex<Vec<std::mem::Discriminant<ConsoleOnly>>> = std::sync::Mutex::new(Vec::new());
+    let Some((what, len)) = decode::decode(code) else {
+        return 0;
+    };
+    static SEEN: std::sync::Mutex<Vec<std::mem::Discriminant<ConsoleOnly>>> =
+        std::sync::Mutex::new(Vec::new());
     if let Ok(mut seen) = SEEN.lock()
         && !seen.contains(&std::mem::discriminant(&what))
     {
@@ -443,7 +502,8 @@ pub(crate) unsafe fn emulate(ctx: &mut CONTEXT) -> i32 {
                 sites::patched();
             }
             let regs: [u64; 16] = [
-                ctx.Rax, ctx.Rcx, ctx.Rdx, ctx.Rbx, ctx.Rsp, ctx.Rbp, ctx.Rsi, ctx.Rdi, ctx.R8, ctx.R9, ctx.R10, ctx.R11, ctx.R12, ctx.R13, ctx.R14, ctx.R15,
+                ctx.Rax, ctx.Rcx, ctx.Rdx, ctx.Rbx, ctx.Rsp, ctx.Rbp, ctx.Rsi, ctx.Rdi, ctx.R8,
+                ctx.R9, ctx.R10, ctx.R11, ctx.R12, ctx.R13, ctx.R14, ctx.R15,
             ];
             let end = regs[end_reg as usize & 15] as usize;
             let start = ctx.Rax as usize;
@@ -452,16 +512,24 @@ pub(crate) unsafe fn emulate(ctx: &mut CONTEXT) -> i32 {
             // not above the start. (The bytes from `start` to `end` were, `rax` came out as
             // `end`, and the flags stayed what they were.)
             const MOST: usize = (2 << 30) / 64;
-            let wanted = if end > start { (end - start).div_ceil(64) } else { 1 };
+            let wanted = if end > start {
+                (end - start).div_ceil(64)
+            } else {
+                1
+            };
             let passes = wanted.min(MOST);
             let first = start & !63;
-            let Some(stop) = first.checked_add(passes * 64) else { return 0 };
+            let Some(stop) = first.checked_add(passes * 64) else {
+                return 0;
+            };
             // Region by region: a block may lie across several (the title's pages are
             // mapped one view each), and one answer for all of it was a refusal, after
             // which every 64-byte line took an exception of its own.
             let mut at = first;
             while at < stop {
-                let Some(to) = writable_to(at, stop) else { break };
+                let Some(to) = writable_to(at, stop) else {
+                    break;
+                };
                 // SAFETY: committed and writable from `at` to `to`.
                 unsafe { std::ptr::write_bytes(at as *mut u8, 0, to - at) };
                 at = to;
@@ -477,7 +545,8 @@ pub(crate) unsafe fn emulate(ctx: &mut CONTEXT) -> i32 {
                 // there (the same instruction again), where the real one faults too.
                 return CONTINUE_EXECUTION;
             }
-            ctx.EFlags = ctx.EFlags & !crate::crash::CMP_FLAGS | crate::crash::cmp_flags(ctx.Rax, end as u64);
+            ctx.EFlags = ctx.EFlags & !crate::crash::CMP_FLAGS
+                | crate::crash::cmp_flags(ctx.Rax, end as u64);
         }
         ConsoleOnly::Rdpru => {
             let mut v = 0i64;
@@ -489,10 +558,25 @@ pub(crate) unsafe fn emulate(ctx: &mut CONTEXT) -> i32 {
         }
         ConsoleOnly::Rdpid(r) => {
             // SAFETY: no preconditions.
-            let cpu = unsafe { windows_sys::Win32::System::Threading::GetCurrentProcessorNumber() } as u64;
+            let cpu = unsafe { windows_sys::Win32::System::Threading::GetCurrentProcessorNumber() }
+                as u64;
             let regs: [&mut u64; 16] = [
-                &mut ctx.Rax, &mut ctx.Rcx, &mut ctx.Rdx, &mut ctx.Rbx, &mut ctx.Rsp, &mut ctx.Rbp, &mut ctx.Rsi, &mut ctx.Rdi, &mut ctx.R8, &mut ctx.R9, &mut ctx.R10, &mut ctx.R11, &mut ctx.R12, &mut ctx.R13,
-                &mut ctx.R14, &mut ctx.R15,
+                &mut ctx.Rax,
+                &mut ctx.Rcx,
+                &mut ctx.Rdx,
+                &mut ctx.Rbx,
+                &mut ctx.Rsp,
+                &mut ctx.Rbp,
+                &mut ctx.Rsi,
+                &mut ctx.Rdi,
+                &mut ctx.R8,
+                &mut ctx.R9,
+                &mut ctx.R10,
+                &mut ctx.R11,
+                &mut ctx.R12,
+                &mut ctx.R13,
+                &mut ctx.R14,
+                &mut ctx.R15,
             ];
             *regs[r as usize & 15] = cpu;
         }
@@ -511,11 +595,21 @@ pub(crate) unsafe fn emulate(ctx: &mut CONTEXT) -> i32 {
             d.Low = decode::extrq(d.Low, len, idx);
             d.High = 0;
         }
-        ConsoleOnly::Insertq { dst, src, reg, len, idx } => {
+        ConsoleOnly::Insertq {
+            dst,
+            src,
+            reg,
+            len,
+            idx,
+        } => {
             // SAFETY: as above.
             let x = unsafe { &mut ctx.Anonymous.FltSave.XmmRegisters };
             let s = x[src as usize & 15];
-            let (len, idx) = if reg { (s.High as u8, (s.High >> 8) as u8) } else { (len, idx) };
+            let (len, idx) = if reg {
+                (s.High as u8, (s.High >> 8) as u8)
+            } else {
+                (len, idx)
+            };
             let d = &mut x[dst as usize & 15];
             d.Low = decode::insertq(d.Low, s.Low, len, idx);
             d.High = 0;
@@ -541,11 +635,21 @@ mod tests {
 
     #[test]
     fn wait_instructions_are_replaced_inside_sixteen_aligned_bytes() {
-        let word = u128::from_le_bytes([1, 2, 3, 4, 5, 6, 7, 0x0f, 0x01, 0xfb, 11, 12, 13, 14, 15, 16]);
+        let word = u128::from_le_bytes([
+            1, 2, 3, 4, 5, 6, 7, 0x0f, 0x01, 0xfb, 11, 12, 13, 14, 15, 16,
+        ]);
         let new = with_patch(word, 0x1007, &[0xf3, 0x90, 0x90]).unwrap();
-        assert_eq!(new.to_le_bytes(), [1, 2, 3, 4, 5, 6, 7, 0xf3, 0x90, 0x90, 11, 12, 13, 14, 15, 16]);
+        assert_eq!(
+            new.to_le_bytes(),
+            [
+                1, 2, 3, 4, 5, 6, 7, 0xf3, 0x90, 0x90, 11, 12, 13, 14, 15, 16
+            ]
+        );
         assert!(with_patch(word, 0x100d, &[0; 3]).is_some());
-        assert!(with_patch(word, 0x100e, &[0; 3]).is_none(), "crosses into the next sixteen");
+        assert!(
+            with_patch(word, 0x100e, &[0; 3]).is_none(),
+            "crosses into the next sixteen"
+        );
     }
 
     /// `monitorx; mwaitx; ret` in a page of its own: each is replaced at its first fault,
@@ -553,12 +657,18 @@ mod tests {
     #[test]
     fn a_wait_faults_once_and_the_page_keeps_its_protection() {
         use windows_sys::Win32::System::Memory::{
-            MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, MEMORY_BASIC_INFORMATION, PAGE_EXECUTE_READ, PAGE_READWRITE, VirtualAlloc, VirtualFree,
-            VirtualProtect, VirtualQuery,
+            MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, MEMORY_BASIC_INFORMATION, PAGE_EXECUTE_READ,
+            PAGE_READWRITE, VirtualAlloc, VirtualFree, VirtualProtect, VirtualQuery,
         };
         // SAFETY: memory of our own, read, written and run within its page.
         unsafe {
-            let page = VirtualAlloc(std::ptr::null(), 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE).cast::<u8>();
+            let page = VirtualAlloc(
+                std::ptr::null(),
+                4096,
+                MEM_COMMIT | MEM_RESERVE,
+                PAGE_READWRITE,
+            )
+            .cast::<u8>();
             assert!(!page.is_null());
             let code = [0x0f, 0x01, 0xfa, 0x0f, 0x01, 0xfb, 0xc3];
             // The first over the end of its aligned eight bytes, as the title's is; and one
@@ -566,7 +676,10 @@ mod tests {
             std::ptr::copy_nonoverlapping(code.as_ptr(), page.add(6), code.len());
             std::ptr::copy_nonoverlapping(code.as_ptr(), page.add(46), code.len());
             let mut old = 0;
-            assert_ne!(VirtualProtect(page.cast(), 4096, PAGE_EXECUTE_READ, &mut old), 0);
+            assert_ne!(
+                VirtualProtect(page.cast(), 4096, PAGE_EXECUTE_READ, &mut old),
+                0
+            );
             let at = page as usize;
             let mut context: CONTEXT = std::mem::zeroed();
             for rip in [at + 6, at + 9, at + 46] {
@@ -582,9 +695,15 @@ mod tests {
                 run();
                 // A second thread that faulted at the same place meanwhile.
                 assert!(patch(at + 6, [0x0f, 0x01, 0xfa], [0x0f, 0x1f, 0x00]));
-                assert!(!patch(at + 46, [0x0f, 0x01, 0xfa], [0x0f, 0x1f, 0x00]), "crosses its sixteen bytes");
+                assert!(
+                    !patch(at + 46, [0x0f, 0x01, 0xfa], [0x0f, 0x1f, 0x00]),
+                    "crosses its sixteen bytes"
+                );
             }
-            assert_eq!(std::slice::from_raw_parts(page.add(46), 3), [0x0f, 0x01, 0xfa]);
+            assert_eq!(
+                std::slice::from_raw_parts(page.add(46), 3),
+                [0x0f, 0x01, 0xfa]
+            );
             let mut m: MEMORY_BASIC_INFORMATION = std::mem::zeroed();
             VirtualQuery(page.cast(), &mut m, size_of_val(&m));
             assert_eq!(m.Protect, PAGE_EXECUTE_READ);
@@ -596,19 +715,30 @@ mod tests {
     /// and the pointer, the scratch register and the flags come out as from the loop.
     #[test]
     fn a_clzero_loop_becomes_plain_stores() {
-        use windows_sys::Win32::System::Memory::{MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_EXECUTE_READWRITE, VirtualAlloc, VirtualFree};
+        use windows_sys::Win32::System::Memory::{
+            MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_EXECUTE_READWRITE, VirtualAlloc, VirtualFree,
+        };
         // Against rdx (rm rax, reg rdx) and against rcx, the scratch register.
-        for (cmp, by) in [([0x48, 0x39, 0xd0], 2), ([0x48, 0x39, 0xc8], 1), ([0x4c, 0x39, 0xc0], 8)] {
+        for (cmp, by) in [
+            ([0x48, 0x39, 0xd0], 2),
+            ([0x48, 0x39, 0xc8], 1),
+            ([0x4c, 0x39, 0xc0], 8),
+        ] {
             // SAFETY: memory of our own, written and run inside it.
             unsafe {
-                let page = VirtualAlloc(std::ptr::null(), 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) as usize;
+                let page = VirtualAlloc(
+                    std::ptr::null(),
+                    4096,
+                    MEM_COMMIT | MEM_RESERVE,
+                    PAGE_EXECUTE_READWRITE,
+                ) as usize;
                 assert_ne!(page, 0);
                 // A function of (start, end): the start in rax, the end in its register, the
                 // loop at 16, and what rax became.
                 let mut head = vec![0x48, 0x89, 0xc8]; // mov rax, rcx
                 match by {
-                    1 => head.extend([0x48, 0x89, 0xd1]),  // mov rcx, rdx
-                    8 => head.extend([0x49, 0x89, 0xd0]),  // mov r8, rdx
+                    1 => head.extend([0x48, 0x89, 0xd1]), // mov rcx, rdx
+                    8 => head.extend([0x49, 0x89, 0xd0]), // mov r8, rdx
                     _ => {}
                 }
                 head.resize(16, 0x90);
@@ -629,7 +759,10 @@ mod tests {
                 context.Rcx = context.Rdx;
                 context.R8 = context.Rdx;
                 assert_eq!(emulate(&mut context), CONTINUE_EXECUTION);
-                assert_eq!((context.Rip, context.Rax), (page as u64 + 28, first as u64 + 128));
+                assert_eq!(
+                    (context.Rip, context.Rax),
+                    (page as u64 + 28, first as u64 + 128)
+                );
                 if patches_clzero() {
                     assert_eq!(*((page + 16) as *const u8), 0xe9, "a jump");
                     block.fill(0xaa);
@@ -638,7 +771,12 @@ mod tests {
                     assert_eq!(run(first + 8, first + 130), first + 8 + 128);
                     let at = first - base;
                     assert!(block[at..at + 128].iter().all(|&b| b == 0));
-                    assert!(block[..at].iter().chain(&block[at + 128..]).all(|&b| b == 0xaa));
+                    assert!(
+                        block[..at]
+                            .iter()
+                            .chain(&block[at + 128..])
+                            .all(|&b| b == 0xaa)
+                    );
                     // An end at the start: one line.
                     block.fill(0xaa);
                     assert_eq!(run(first, first), first + 64);
@@ -647,7 +785,10 @@ mod tests {
                 VirtualFree(page as *mut _, 0, MEM_RELEASE);
             }
         }
-        assert!(clzero_stub(0x1000, 0x2000, [0x48, 0x39, 0xc0]).is_none(), "against rax itself");
+        assert!(
+            clzero_stub(0x1000, 0x2000, [0x48, 0x39, 0xc0]).is_none(),
+            "against rax itself"
+        );
         assert!(jump(0x1000, 0x9000_0000_0000).is_none(), "out of reach");
     }
 }
