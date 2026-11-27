@@ -11,6 +11,16 @@ use super::record::{kernel, on, standing, stood_at, ticks, wait_began, wait_ende
 
 type Handle = *mut c_void;
 
+/// The first of a wrapped function's arguments: for a wait, what it waits on.
+macro_rules! first_arg {
+    ($first:ident $(, $rest:ident)*) => {
+        $first
+    };
+}
+
+/// The wrapped functions that wait, by their place in the table.
+const WAITS: [usize; 12] = [0, 1, 2, 3, 7, 9, 11, 13, 16, 17, 20, 27];
+
 macro_rules! wrapped {
     ($($index:literal $name:ident ($($arg:ident: $type:ty),*) $(-> $result:ty)? => $body:expr;)*) => {
         /// The functions wrapped, by name: their own addresses, ours.
@@ -35,6 +45,16 @@ macro_rules! wrapped {
                     let real: unsafe extern "system" fn($($type),*) $(-> $result)? =
                         unsafe { std::mem::transmute(TABLE[$index].1.load(Ordering::Relaxed)) };
                     if !on() {
+                        // A wait still marks itself in progress between
+                        // windows ([`super::record::in_progress`]): one that
+                        // begins there and never returns is the one to find.
+                        if WAITS.contains(&$index) {
+                            wait_began(stringify!($name), first_arg!($($arg),*) as usize as u64, ticks());
+                            // SAFETY: the caller's own call.
+                            let result = unsafe { real($($arg),*) };
+                            wait_ended();
+                            return result;
+                        }
                         // SAFETY: the caller's own call.
                         return unsafe { real($($arg),*) };
                     }
