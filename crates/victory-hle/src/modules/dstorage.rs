@@ -154,7 +154,13 @@ extern "system" fn open_file(_: Factory, path: *const u16, iid: *const Guid, out
     if stream_log::on() {
         stream_log::line(format_args!("F\t{:x}\t{kept}", file as usize));
     }
-    WALLS_FILES.lock().unwrap_or_else(|e| e.into_inner()).push((file as usize, kept));
+    {
+        // A file object's address can come again once the title has let the
+        // old one go: the newest open names it.
+        let mut files = WALLS_FILES.lock().unwrap_or_else(|e| e.into_inner());
+        files.retain(|f| f.0 != file as usize);
+        files.push((file as usize, kept));
+    }
     put(out, file)
 }
 
