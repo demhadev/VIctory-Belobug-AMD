@@ -434,6 +434,82 @@ pub extern "system" fn SetThreadPriority(thread: *mut c_void, priority: i32) -> 
     unsafe { windows_sys::Win32::System::Threading::SetThreadPriority(thread, priority) }
 }
 
+/// `GROUP_AFFINITY`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct GroupAffinity {
+    mask: usize,
+    group: u16,
+    reserved: [u16; 3],
+}
+
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    #[link_name = "SetThreadGroupAffinity"]
+    fn host_set_thread_group_affinity(
+        thread: *mut c_void,
+        affinity: *const GroupAffinity,
+        previous: *mut GroupAffinity,
+    ) -> i32;
+    fn GetActiveProcessorCount(group: u16) -> u32;
+}
+
+/// What a title's processor mask becomes: unchanged (`title`, the default),
+/// or every processor of its group (`all`). The title reads the host's
+/// processors and pins its workers: in the dumps of the story's loading all
+/// of them had 0x3f, six logical processors, which on a processor with two
+/// threads a core is three of its cores, with the rest idle
+/// (`VICTORY_TITLE_AFFINITY=all`).
+fn title_mask(asked: usize, group: u16, all: bool) -> usize {
+    if !all {
+        return asked;
+    }
+    // SAFETY: a plain query.
+    let n = unsafe { GetActiveProcessorCount(group) };
+    match n {
+        0 => asked,
+        64.. => usize::MAX,
+        n => (1usize << n) - 1,
+    }
+}
+
+/// [`title_mask`]; each mask the title asks for is logged once.
+pub extern "system" fn SetThreadGroupAffinity(
+    thread: *mut c_void,
+    affinity: *const GroupAffinity,
+    previous: *mut GroupAffinity,
+) -> i32 {
+    static ALL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    static SEEN: std::sync::Mutex<Vec<usize>> = std::sync::Mutex::new(Vec::new());
+    let all = *ALL.get_or_init(|| {
+        let all = std::env::var_os("VICTORY_TITLE_AFFINITY").is_some_and(|v| v == "all");
+        tracing::info!(all, "the title's processor masks (VICTORY_TITLE_AFFINITY=all: every processor)");
+        all
+    });
+    if affinity.is_null() {
+        // SAFETY: passed on as the title gave it; the host fails it.
+        return unsafe { host_set_thread_group_affinity(thread, affinity, previous) };
+    }
+    // SAFETY: the title passes a GROUP_AFFINITY.
+    let mut wanted = unsafe { affinity.read() };
+    let given = title_mask(wanted.mask, wanted.group, all);
+    {
+        let mut seen = SEEN.lock().unwrap_or_else(|e| e.into_inner());
+        if seen.len() < 32 && !seen.contains(&wanted.mask) {
+            seen.push(wanted.mask);
+            tracing::info!(
+                asked = format_args!("{:#x}", wanted.mask),
+                group = wanted.group,
+                given = format_args!("{given:#x}"),
+                "the title pins a thread to processors"
+            );
+        }
+    }
+    wanted.mask = given;
+    // SAFETY: a thread handle of the title's and our own copy of its mask.
+    unsafe { host_set_thread_group_affinity(thread, &wanted, previous) }
+}
+
 pub(crate) fn module() -> HleModule {
     HleModule {
         name: "kernel",
@@ -442,6 +518,7 @@ pub(crate) fn module() -> HleModule {
             "kernelbase.dll",
             "api-ms-win-core-libraryloader-*",
             "api-ms-win-core-processthreads-*",
+            "api-ms-win-core-processtopology-*",
             "api-ms-win-core-debug-*",
             "api-ms-win-core-errorhandling-*",
             "api-ms-win-crt-runtime-*",
@@ -469,6 +546,7 @@ pub(crate) fn module() -> HleModule {
             hle_export!(TerminateProcess),
             hle_export!(SetUnhandledExceptionFilter),
             hle_export!(SetThreadPriority),
+            hle_export!(SetThreadGroupAffinity),
         ],
     }
 }
