@@ -23,6 +23,8 @@
 
 #[cfg(all(windows, feature = "diagnostics"))]
 mod breaks;
+#[cfg(all(windows, feature = "diagnostics"))]
+mod calls;
 #[cfg(windows)]
 mod console_insn;
 mod crash;
