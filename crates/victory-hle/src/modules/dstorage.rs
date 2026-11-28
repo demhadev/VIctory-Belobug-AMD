@@ -154,7 +154,13 @@ extern "system" fn open_file(_: Factory, path: *const u16, iid: *const Guid, out
     if stream_log::on() {
         stream_log::line(format_args!("F\t{:x}\t{kept}", file as usize));
     }
-    WALLS_FILES.lock().unwrap_or_else(|e| e.into_inner()).push((file as usize, kept));
+    {
+        // A file object's address can come again once the title has let the
+        // old one go: the newest open names it.
+        let mut files = WALLS_FILES.lock().unwrap_or_else(|e| e.into_inner());
+        files.retain(|f| f.0 != file as usize);
+        files.push((file as usize, kept));
+    }
     put(out, file)
 }
 
@@ -663,19 +669,23 @@ fn walls_trace() -> u8 {
 /// (for the walls trace: a request names its file by that address).
 static WALLS_FILES: Mutex<Vec<(usize, String)>> = Mutex::new(Vec::new());
 
+/// The path of the file a request reads ("memory" for a memory source).
+fn file_of(request: &Request) -> String {
+    if request.options & MEMORY_SOURCE != 0 {
+        return "memory".to_string();
+    }
+    let files = WALLS_FILES.lock().unwrap_or_else(|e| e.into_inner());
+    let source = request.source as usize;
+    files.iter().find(|f| f.0 == source).map_or_else(|| "?".to_string(), |f| f.1.clone())
+}
+
 /// The walls trace's line for a request that is done.
 fn walls_request(request: &Request, result: &Result<(), HRESULT>, started: std::time::Instant) {
     let level = walls_trace();
     if level == 0 || (level == 1 && result.is_ok()) {
         return;
     }
-    let file = if request.options & MEMORY_SOURCE != 0 {
-        "memory".to_string()
-    } else {
-        let files = WALLS_FILES.lock().unwrap_or_else(|e| e.into_inner());
-        let source = request.source as usize;
-        files.iter().find(|f| f.0 == source).map_or_else(|| "?".to_string(), |f| f.1.clone())
-    };
+    let file = file_of(request);
     let hr = match result {
         Ok(()) => 0,
         Err(hr) => *hr as u32,
@@ -1384,6 +1394,7 @@ fn execute(request: &Request) -> Result<(), HRESULT> {
             intermediate_size = request.intermediate_size,
             tag = request.tag,
             name = text(request.name),
+            file = file_of(request),
             hr = format_args!("{:#010x}", hr as u32),
             "dstorage: request failed: {why}"
         );

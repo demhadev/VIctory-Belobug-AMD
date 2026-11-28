@@ -123,6 +123,8 @@ extern "system" fn set_event_on_completion(this: This, value: u64, event: *mut c
         tracing::warn!(value, "blocking fence wait not implemented");
         return E_NOTIMPL;
     }
+    #[cfg(all(windows, feature = "diagnostics"))]
+    crate::timeline::fence_event(event as u64, this as u64, value);
     waiters.push((value, event as usize));
     S_OK
 }
@@ -131,6 +133,8 @@ pub(crate) fn set(this: This, value: u64) {
     let fence = fence(this);
     #[cfg(all(windows, feature = "diagnostics"))]
     crate::timeline::told("a fence set", this as usize, value);
+    #[cfg(all(windows, feature = "diagnostics"))]
+    crate::timeline::fence_value(this as u64, value);
     let mut waiters = fence.waiters.lock().unwrap_or_else(|e| e.into_inner());
     fence.value.store(value, Ordering::Release);
     waiters.retain(|&(wanted, event)| {

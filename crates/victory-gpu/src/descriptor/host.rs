@@ -1764,10 +1764,10 @@ impl HostHeap {
             placed: {
                 let spans = std::sync::Arc::<Mutex<Spans>>::default();
                 if !sampler {
-                    PLACED_SPANS
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .push(std::sync::Arc::downgrade(&spans));
+                    let mut heaps = PLACED_SPANS.lock().unwrap_or_else(|e| e.into_inner());
+                    // Heaps let go leave dead entries; drop them as new ones come.
+                    heaps.retain(|w| w.strong_count() > 0);
+                    heaps.push(std::sync::Arc::downgrade(&spans));
                 }
                 spans
             },

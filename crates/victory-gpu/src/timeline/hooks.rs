@@ -7,9 +7,65 @@ use std::ffi::{CStr, c_void};
 use std::sync::Once;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::record::{kernel, on, standing, stood_at, ticks, waited, woken};
+use super::record::{kernel, on, semaphore_made, semaphore_taken, signalled, standing, stood_at, ticks, wait_began, wait_ended, waited, woken};
 
 type Handle = *mut c_void;
+
+/// The first of a wrapped function's arguments: for a wait, what it waits on.
+macro_rules! first_arg {
+    ($first:ident $(, $rest:ident)*) => {
+        $first
+    };
+}
+
+/// The wrapped functions that wait, by their place in the table.
+const WAITS: [usize; 12] = [0, 1, 2, 3, 7, 9, 11, 13, 16, 17, 20, 27];
+
+/// The wrapped waits whose success takes one count of a semaphore
+/// (`WaitForSingleObject`, `WaitForSingleObjectEx`).
+const TAKES: [usize; 2] = [0, 1];
+
+/// What a wrapped function returned, as a number (0 for none).
+trait Code {
+    fn code(&self) -> u64;
+}
+impl Code for () {
+    fn code(&self) -> u64 {
+        0
+    }
+}
+impl Code for u32 {
+    fn code(&self) -> u64 {
+        u64::from(*self)
+    }
+}
+impl Code for i32 {
+    fn code(&self) -> u64 {
+        *self as u32 as u64
+    }
+}
+impl Code for u8 {
+    fn code(&self) -> u64 {
+        u64::from(*self)
+    }
+}
+impl Code for usize {
+    fn code(&self) -> u64 {
+        *self as u64
+    }
+}
+impl Code for Handle {
+    fn code(&self) -> u64 {
+        *self as usize as u64
+    }
+}
+
+/// The wrapped functions that make an object, noted between windows too.
+const MADE_ALWAYS: [usize; 3] = [29, 30, 31];
+
+/// The wrapped functions that signal what their first argument names
+/// (set, release, wake): noted between windows too.
+const SIGNALS_OBJECT: [usize; 7] = [4, 5, 6, 14, 15, 18, 19];
 
 macro_rules! wrapped {
     ($($index:literal $name:ident ($($arg:ident: $type:ty),*) $(-> $result:ty)? => $body:expr;)*) => {
@@ -35,10 +91,35 @@ macro_rules! wrapped {
                     let real: unsafe extern "system" fn($($type),*) $(-> $result)? =
                         unsafe { std::mem::transmute(TABLE[$index].1.load(Ordering::Relaxed)) };
                     if !on() {
+                        // Creations are noted windows or not: a wait may
+                        // be on an object made long before.
+                        if MADE_ALWAYS.contains(&$index) {
+                            return ($body)(real);
+                        }
+                        // A wait still marks itself in progress between
+                        // windows ([`super::record::in_progress`]): one that
+                        // begins there and never returns is the one to find.
+                        if WAITS.contains(&$index) {
+                            wait_began(stringify!($name), first_arg!($($arg),*) as usize as u64, ticks());
+                            // SAFETY: the caller's own call.
+                            let result = unsafe { real($($arg),*) };
+                            wait_ended();
+                            if TAKES.contains(&$index) {
+                                semaphore_taken(first_arg!($($arg),*) as usize as u64, Code::code(&result));
+                            }
+                            return result;
+                        }
+                        if SIGNALS_OBJECT.contains(&$index) {
+                            signalled(first_arg!($($arg),*) as usize as u64, ticks());
+                        }
                         // SAFETY: the caller's own call.
                         return unsafe { real($($arg),*) };
                     }
-                    ($body)(real)
+                    let result = ($body)(real);
+                    if TAKES.contains(&$index) {
+                        semaphore_taken(first_arg!($($arg),*) as usize as u64, Code::code(&result));
+                    }
+                    result
                 }
             )*
         }
@@ -52,10 +133,12 @@ macro_rules! wrapped {
 fn wait<T>(name: &'static str, object: u64, call: impl FnOnce() -> T) -> T {
     use windows_sys::Win32::Foundation::{GetLastError, SetLastError};
     let t0 = ticks();
+    wait_began(name, object, t0);
     let result = {
         let _standing = standing(object);
         call()
     };
+    wait_ended();
     // SAFETY: plain queries of this thread's own.
     unsafe {
         let error = GetLastError();
@@ -207,13 +290,28 @@ wrapped! {
         released("_Mtx_unlock", lock);
         unsafe { real(lock) }
     };
-    29 TryEnterCriticalSection(lock: Handle) -> u8 => |real: unsafe extern "system" fn(Handle) -> u8| unsafe { real(lock) };
-    30 TryAcquireSRWLockExclusive(lock: Handle) -> u8 => |real: unsafe extern "system" fn(Handle) -> u8| unsafe { real(lock) };
-    31 TryAcquireSRWLockShared(lock: Handle) -> u8 => |real: unsafe extern "system" fn(Handle) -> u8| unsafe { real(lock) };
+    29 CreateSemaphoreW(attributes: Handle, initial: i32, most: i32, name: Handle) -> Handle => |real: unsafe extern "system" fn(Handle, i32, i32, Handle) -> Handle| {
+        let made = unsafe { real(attributes, initial, most, name) };
+        semaphore_made(made as u64, initial, most);
+        made
+    };
+    30 CreateSemaphoreExW(attributes: Handle, initial: i32, most: i32, name: Handle, flags: u32, access: u32) -> Handle => |real: unsafe extern "system" fn(Handle, i32, i32, Handle, u32, u32) -> Handle| {
+        let made = unsafe { real(attributes, initial, most, name, flags, access) };
+        semaphore_made(made as u64, initial, most);
+        made
+    };
+    31 CreateSemaphoreA(attributes: Handle, initial: i32, most: i32, name: Handle) -> Handle => |real: unsafe extern "system" fn(Handle, i32, i32, Handle) -> Handle| {
+        let made = unsafe { real(attributes, initial, most, name) };
+        semaphore_made(made as u64, initial, most);
+        made
+    };
+    32 TryEnterCriticalSection(lock: Handle) -> u8 => |real: unsafe extern "system" fn(Handle) -> u8| unsafe { real(lock) };
+    33 TryAcquireSRWLockExclusive(lock: Handle) -> u8 => |real: unsafe extern "system" fn(Handle) -> u8| unsafe { real(lock) };
+    34 TryAcquireSRWLockShared(lock: Handle) -> u8 => |real: unsafe extern "system" fn(Handle) -> u8| unsafe { real(lock) };
 }
 
 /// The wrappers from here on are there for their real functions only.
-const ONLY_REAL: usize = 29;
+const ONLY_REAL: usize = 32;
 
 /// Asks the system for the real functions, and points our own import table
 /// at the wrappers: once, if a timeline is wanted.

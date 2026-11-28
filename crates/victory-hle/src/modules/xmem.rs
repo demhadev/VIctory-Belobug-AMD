@@ -1930,9 +1930,16 @@ pub extern "system" fn XMemGetWorkingSetStatistics(_which: u32, out: *mut Workin
     // SAFETY: our own process and a sized structure.
     unsafe { K32GetProcessMemoryInfo(GetCurrentProcess(), &mut counters, counters.cb) };
     let (gpu_optimal, standard) = victory_gpu::console::current().title_memory();
+    // `VICTORY_TITLE_USED_MB`: what the title is told it uses, in MiB,
+    // instead of everything the process has committed (an experiment: a
+    // title that budgets from it may wait for memory it believes is gone).
+    static USED_OVERRIDE: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
+    let used_override = *USED_OVERRIDE.get_or_init(|| {
+        std::env::var("VICTORY_TITLE_USED_MB").ok().and_then(|v| v.trim().parse::<usize>().ok()).map(|mb| mb << 20)
+    });
     let stats = WorkingSet {
         title_limit: gpu_optimal + standard - TRANSFERRED.load(Ordering::Relaxed),
-        title_used: counters.PagefileUsage,
+        title_used: used_override.unwrap_or(counters.PagefileUsage),
         gpu_optimal_limit: gpu_optimal,
         ..Default::default()
     };

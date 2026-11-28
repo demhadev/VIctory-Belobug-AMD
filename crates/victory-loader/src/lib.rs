@@ -21,18 +21,24 @@
 //!    point on a thread with the stack size the image asks for; from then
 //!    on, pass every thread start and end on to the attached images.
 
+#[cfg(all(windows, feature = "diagnostics"))]
+mod breaks;
+#[cfg(all(windows, feature = "diagnostics"))]
+mod calls;
 #[cfg(windows)]
 mod console_insn;
 mod crash;
 #[cfg(windows)]
 pub mod descriptor_sites;
 pub mod frame_rate;
+#[cfg(all(windows, feature = "diagnostics"))]
+mod peek;
 pub mod prepare;
+#[cfg(all(windows, feature = "diagnostics"))]
+mod profile;
 pub(crate) mod publish;
 pub mod resolution;
 pub mod resolve;
-#[cfg(all(windows, feature = "diagnostics"))]
-mod profile;
 #[cfg(all(windows, feature = "diagnostics"))]
 mod stacks;
 #[cfg(windows)]
@@ -41,23 +47,25 @@ mod threads;
 mod thunks;
 #[cfg(windows)]
 mod tls;
-#[cfg(windows)]
-pub mod write_sites;
+#[cfg(all(windows, feature = "diagnostics"))]
+mod watch;
 #[cfg(windows)]
 mod windows;
+#[cfg(windows)]
+pub mod write_sites;
 
+#[cfg(all(windows, feature = "diagnostics"))]
+pub use crash::save_on_crash;
 #[cfg(windows)]
 pub use crash::{
     locate, log_crash, log_crashes_to, note_title_output, report_crashes, report_unhandled,
 };
-#[cfg(all(windows, feature = "diagnostics"))]
-pub use crash::save_on_crash;
 pub use prepare::{PrepareError, PreparedImage, prepare};
+#[cfg(all(windows, feature = "diagnostics"))]
+pub use profile::profile_on_schedule;
 pub use resolve::{ImportResolver, Provenance, Resolution};
 #[cfg(all(windows, feature = "diagnostics"))]
 pub use stacks::{dump_stacks, dump_stacks_on_schedule};
-#[cfg(all(windows, feature = "diagnostics"))]
-pub use profile::profile_on_schedule;
 #[cfg(windows)]
 pub use threads::{disable_thread_calls, set_before_thread_shutdown};
 #[cfg(windows)]

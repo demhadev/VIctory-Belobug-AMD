@@ -279,7 +279,63 @@ pub(super) fn waited(name: &'static str, object: u64, t0: u64) {
 /// `object` is about to be signalled.
 pub(super) fn woken(name: &'static str, object: u64) {
     let t = ticks();
+    signalled(object, t);
     put(Kind::Wake, name, (t, t), object, 0, 0);
+}
+
+/// Who signalled an object last, when, and how often since the start,
+/// windows or not: so that a wait that never returns can say who set its
+/// object before ([`in_progress`]). Open addressing on the object, no lock.
+struct Signal {
+    object: std::sync::atomic::AtomicU64,
+    thread: AtomicU32,
+    t: std::sync::atomic::AtomicU64,
+    count: AtomicU32,
+}
+
+const SIGNAL_SLOTS: usize = 16384;
+static SIGNALS: [Signal; SIGNAL_SLOTS] = [const {
+    Signal {
+        object: std::sync::atomic::AtomicU64::new(0),
+        thread: AtomicU32::new(0),
+        t: std::sync::atomic::AtomicU64::new(0),
+        count: AtomicU32::new(0),
+    }
+}; SIGNAL_SLOTS];
+
+fn signal_slot(object: u64, insert: bool) -> Option<&'static Signal> {
+    let mut at = (object.wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 50) as usize % SIGNAL_SLOTS;
+    for _ in 0..64 {
+        let slot = &SIGNALS[at];
+        let held = slot.object.load(Ordering::Acquire);
+        if held == object {
+            return Some(slot);
+        }
+        if held == 0 {
+            if !insert {
+                return None;
+            }
+            match slot.object.compare_exchange(0, object, Ordering::AcqRel, Ordering::Acquire) {
+                Ok(_) => return Some(slot),
+                Err(now) if now == object => return Some(slot),
+                Err(_) => {}
+            }
+        }
+        at = (at + 1) % SIGNAL_SLOTS;
+    }
+    None
+}
+
+/// `object` is signalled (set, released, woken) by this thread at `t`.
+pub(super) fn signalled(object: u64, t: u64) {
+    if object == 0 {
+        return;
+    }
+    if let Some(slot) = signal_slot(object, true) {
+        slot.thread.store(thread(), Ordering::Relaxed);
+        slot.t.store(t, Ordering::Relaxed);
+        slot.count.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 /// A call of the kernel's on `bytes` began at `t0`.
@@ -641,6 +697,357 @@ static STOOD_AT: [AtomicU32; 4096] = [const { AtomicU32::new(0) }; 4096];
 
 fn place(object: u64) -> &'static AtomicU32 {
     &STOOD_AT[(object.wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 52) as usize]
+}
+
+/// Waits in progress, a slot a thread (taken at its first wait): the
+/// thread's id (0: not waiting now), the object, when the wait began, and
+/// the wait's name. A wait is recorded as an event only when it returns, so
+/// one that never returns showed nowhere; these slots say who is waiting on
+/// what when a window is written ([`in_progress`]). No lock: this runs
+/// inside the waits of our own locks too.
+struct Pending {
+    thread: AtomicU32,
+    object: std::sync::atomic::AtomicU64,
+    t0: std::sync::atomic::AtomicU64,
+    name: AtomicPtr<u8>,
+    len: AtomicUsize,
+}
+
+const PENDING_SLOTS: usize = 1024;
+static PENDING: [Pending; PENDING_SLOTS] = [const {
+    Pending {
+        thread: AtomicU32::new(0),
+        object: std::sync::atomic::AtomicU64::new(0),
+        t0: std::sync::atomic::AtomicU64::new(0),
+        name: AtomicPtr::new(std::ptr::null_mut()),
+        len: AtomicUsize::new(0),
+    }
+}; PENDING_SLOTS];
+static NEXT_PENDING: AtomicUsize = AtomicUsize::new(0);
+
+fn pending_slot() -> Option<&'static Pending> {
+    thread_local!(static SLOT: Cell<usize> = const { Cell::new(usize::MAX) });
+    let at = SLOT.with(|s| {
+        if s.get() == usize::MAX {
+            s.set(NEXT_PENDING.fetch_add(1, Ordering::Relaxed));
+        }
+        s.get()
+    });
+    PENDING.get(at)
+}
+
+/// This thread begins a wait on `object` named `name` at `t0`.
+pub(super) fn wait_began(name: &'static str, object: u64, t0: u64) {
+    if let Some(p) = pending_slot() {
+        p.object.store(object, Ordering::Relaxed);
+        p.t0.store(t0, Ordering::Relaxed);
+        p.name.store(name.as_ptr().cast_mut(), Ordering::Relaxed);
+        p.len.store(name.len(), Ordering::Relaxed);
+        p.thread.store(thread(), Ordering::Release);
+    }
+}
+
+/// This thread's wait returned.
+pub(super) fn wait_ended() {
+    if let Some(p) = pending_slot() {
+        p.thread.store(0, Ordering::Release);
+    }
+}
+
+/// Events the title asked a fence to set (`SetEventOnCompletion`): the
+/// fence and the value it waits for; and the last value each fence was set
+/// to. Kept all the time in diagnostics builds, for [`in_progress`].
+static FENCE_EVENTS: Mutex<Option<std::collections::HashMap<u64, (u64, u64)>>> = Mutex::new(None);
+static FENCE_VALUES: Mutex<Option<std::collections::HashMap<u64, u64>>> = Mutex::new(None);
+
+/// The title asked `fence` to set `event` at `value`.
+pub(crate) fn fence_event(event: u64, fence: u64, value: u64) {
+    // Kept whether a window records or not: the title asks for an event
+    // once and may wait on it long after (one handle, one entry).
+    FENCE_EVENTS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).insert(event, (fence, value));
+}
+
+/// `fence` was set to `value`.
+pub(crate) fn fence_value(fence: u64, value: u64) {
+    FENCE_VALUES.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).insert(fence, value);
+}
+
+/// Lines for the waits in progress now that began at least 100 ms ago, the
+/// longest first, with the fence an event stands for if the title asked one
+/// to set it.
+pub(super) fn in_progress() -> String {
+    use std::fmt::Write as _;
+    let now = ticks();
+    let mut waits: Vec<(u64, u32, &'static str, u64)> = PENDING
+        .iter()
+        .take(NEXT_PENDING.load(Ordering::Relaxed).min(PENDING_SLOTS))
+        .filter_map(|p| {
+            let thread = p.thread.load(Ordering::Acquire);
+            let (object, t0) = (p.object.load(Ordering::Relaxed), p.t0.load(Ordering::Relaxed));
+            let (ptr, len) = (p.name.load(Ordering::Relaxed), p.len.load(Ordering::Relaxed));
+            // SAFETY: a `&'static str` stored whole by `wait_began`; a slot
+            // read while its thread changes it at worst names another wait.
+            let name = unsafe { std::str::from_utf8(std::slice::from_raw_parts(ptr, len)).unwrap_or("?") };
+            (thread != 0 && !ptr.is_null() && thread == p.thread.load(Ordering::Acquire))
+                .then(|| (micros(now.saturating_sub(t0)), thread, name, object))
+        })
+        .filter(|w| w.0 >= 100_000)
+        .collect();
+    waits.sort_unstable_by_key(|w| std::cmp::Reverse(w.0));
+    let events = FENCE_EVENTS.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default();
+    let values = FENCE_VALUES.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default();
+    let mut text = format!("\nwaits in progress when this was written, 100 ms or longer ({}):\n", waits.len());
+    for (us, thread, name, object) in waits {
+        let _ = write!(text, "  thread {thread}: {name} on {object:#x}, for {:.1} s", us as f64 / 1e6);
+        if name.starts_with("WaitFor") {
+            let kind = handle_kind(object);
+            let semaphore = kind == "; a Semaphore";
+            text.push_str(&kind);
+            if semaphore {
+                text.push_str(&made_text(object));
+            }
+        }
+        match signal_slot(object, false) {
+            Some(s) => {
+                let ago = micros(now.saturating_sub(s.t.load(Ordering::Relaxed))) as f64 / 1e6;
+                let _ = write!(
+                    text,
+                    "; last signalled by thread {} {:.1} s ago, {} times since the start",
+                    s.thread.load(Ordering::Relaxed),
+                    ago,
+                    s.count.load(Ordering::Relaxed)
+                );
+            }
+            None => text.push_str("; never signalled since the start"),
+        }
+        if let Some(&(fence, wanted)) = events.get(&object) {
+            match values.get(&fence) {
+                Some(&at) => {
+                    let _ = write!(text, "; an event of fence {fence:#x}, which waits for {wanted} (the fence was last set to {at})");
+                }
+                None => {
+                    let _ = write!(text, "; an event of fence {fence:#x}, which waits for {wanted} (no set of that fence seen)");
+                }
+            }
+        }
+        text.push('\n');
+    }
+    text
+}
+
+/// Semaphores made since the start, by handle: the thread that made one,
+/// its starting and greatest counts, and the maker's return addresses. Kept
+/// windows or not, without a lock; a handle value used again replaces it.
+struct Made {
+    object: std::sync::atomic::AtomicU64,
+    thread: AtomicU32,
+    counts: std::sync::atomic::AtomicU64,
+    frames: [AtomicUsize; MADE_FRAMES],
+    /// Successful waits on it (a count taken each), the last taker, when,
+    /// and its return addresses.
+    taken: AtomicU32,
+    taker: AtomicU32,
+    taken_at: std::sync::atomic::AtomicU64,
+    taker_frames: [AtomicUsize; MADE_FRAMES],
+}
+
+const MADE_FRAMES: usize = 8;
+const MADE_SLOTS: usize = 8192;
+static MADE: [Made; MADE_SLOTS] = [const {
+    Made {
+        object: std::sync::atomic::AtomicU64::new(0),
+        thread: AtomicU32::new(0),
+        counts: std::sync::atomic::AtomicU64::new(0),
+        frames: [const { AtomicUsize::new(0) }; MADE_FRAMES],
+        taken: AtomicU32::new(0),
+        taker: AtomicU32::new(0),
+        taken_at: std::sync::atomic::AtomicU64::new(0),
+        taker_frames: [const { AtomicUsize::new(0) }; MADE_FRAMES],
+    }
+}; MADE_SLOTS];
+
+fn made_slot(object: u64, insert: bool) -> Option<&'static Made> {
+    let mut at = (object.wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 51) as usize % MADE_SLOTS;
+    for _ in 0..64 {
+        let slot = &MADE[at];
+        let held = slot.object.load(Ordering::Acquire);
+        if held == object {
+            return Some(slot);
+        }
+        if held == 0 {
+            if !insert {
+                return None;
+            }
+            match slot.object.compare_exchange(0, object, Ordering::AcqRel, Ordering::Acquire) {
+                Ok(_) => return Some(slot),
+                Err(now) if now == object => return Some(slot),
+                Err(_) => {}
+            }
+        }
+        at = (at + 1) % MADE_SLOTS;
+    }
+    None
+}
+
+/// This thread made the semaphore `object` with these counts.
+pub(super) fn semaphore_made(object: u64, initial: i32, most: i32) {
+    if object == 0 || object == u64::MAX {
+        return;
+    }
+    let mut frames = [0usize; MADE_FRAMES];
+    // SAFETY: room for that many return addresses.
+    unsafe {
+        windows_sys::Win32::System::Diagnostics::Debug::RtlCaptureStackBackTrace(
+            2,
+            MADE_FRAMES as u32,
+            frames.as_mut_ptr().cast(),
+            std::ptr::null_mut(),
+        );
+    }
+    if let Some(slot) = made_slot(object, true) {
+        slot.thread.store(thread(), Ordering::Relaxed);
+        slot.counts.store(u64::from(initial as u32) << 32 | u64::from(most as u32), Ordering::Relaxed);
+        for (to, from) in slot.frames.iter().zip(frames) {
+            to.store(from, Ordering::Relaxed);
+        }
+        slot.taken.store(0, Ordering::Relaxed);
+        slot.taker.store(0, Ordering::Relaxed);
+    }
+}
+
+/// A wait on `object` returned `code`: 0 (`WAIT_OBJECT_0`) on a semaphore
+/// we saw made took one of its counts, and is noted with its stack.
+pub(super) fn semaphore_taken(object: u64, code: u64) {
+    if code != 0 {
+        return;
+    }
+    let Some(slot) = made_slot(object, false) else {
+        return;
+    };
+    let mut frames = [0usize; MADE_FRAMES];
+    // SAFETY: room for that many return addresses.
+    unsafe {
+        windows_sys::Win32::System::Diagnostics::Debug::RtlCaptureStackBackTrace(
+            2,
+            MADE_FRAMES as u32,
+            frames.as_mut_ptr().cast(),
+            std::ptr::null_mut(),
+        );
+    }
+    slot.taker.store(thread(), Ordering::Relaxed);
+    slot.taken_at.store(ticks(), Ordering::Relaxed);
+    for (to, from) in slot.taker_frames.iter().zip(frames) {
+        to.store(from, Ordering::Relaxed);
+    }
+    slot.taken.fetch_add(1, Ordering::Relaxed);
+}
+
+/// `address` as `module+offset`.
+fn where_is(address: usize) -> String {
+    use windows_sys::Win32::System::LibraryLoader::{
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, GetModuleFileNameW,
+        GetModuleHandleExW,
+    };
+    let mut module = std::ptr::null_mut();
+    // SAFETY: a plain query; the module is not held.
+    let found = unsafe {
+        GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            address as *const u16,
+            &mut module,
+        )
+    } != 0;
+    if !found {
+        return format!("{address:#x}");
+    }
+    let mut name = [0u16; 260];
+    // SAFETY: our buffer and its length.
+    let len = unsafe { GetModuleFileNameW(module, name.as_mut_ptr(), name.len() as u32) } as usize;
+    let path = String::from_utf16_lossy(&name[..len]);
+    let file = path.rsplit(['\\', '/']).next().unwrap_or(&path).trim_end_matches(".dll").to_owned();
+    format!("{file}+{:#x}", address - module as usize)
+}
+
+/// For a semaphore made since the start: who made it, its counts, and where.
+fn made_text(object: u64) -> String {
+    let Some(slot) = made_slot(object, false) else {
+        return "; not seen made".to_owned();
+    };
+    let counts = slot.counts.load(Ordering::Relaxed);
+    let frames: Vec<String> = slot
+        .frames
+        .iter()
+        .map(|f| f.load(Ordering::Relaxed))
+        .filter(|&f| f != 0)
+        .map(where_is)
+        .collect();
+    let mut text = format!(
+        "; made by thread {} with count {} of at most {}, at {}",
+        slot.thread.load(Ordering::Relaxed),
+        (counts >> 32) as u32 as i32,
+        counts as u32 as i32,
+        frames.join(" < ")
+    );
+    let taken = slot.taken.load(Ordering::Relaxed);
+    if taken == 0 {
+        text.push_str("; never taken by a wait we saw");
+    } else {
+        let ago = micros(ticks().saturating_sub(slot.taken_at.load(Ordering::Relaxed))) as f64 / 1e6;
+        let taker: Vec<String> = slot
+            .taker_frames
+            .iter()
+            .map(|f| f.load(Ordering::Relaxed))
+            .filter(|&f| f != 0)
+            .map(where_is)
+            .collect();
+        text.push_str(&format!(
+            "; taken {taken} times, last by thread {} {ago:.1} s ago, at {}",
+            slot.taker.load(Ordering::Relaxed),
+            taker.join(" < ")
+        ));
+    }
+    text
+}
+
+/// What kind of kernel object the handle `object` is (`NtQueryObject`), and
+/// for a thread or a process its id: a wait on a thread is a wait for it to
+/// end, and nothing calls `SetEvent` for that.
+fn handle_kind(object: u64) -> String {
+    use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
+    use windows_sys::Win32::System::Threading::{GetProcessId, GetThreadId};
+    type Query = unsafe extern "system" fn(isize, u32, *mut u8, u32, *mut u32) -> i32;
+    static QUERY: OnceLock<Option<Query>> = OnceLock::new();
+    let query = *QUERY.get_or_init(|| {
+        // SAFETY: ntdll is always loaded; the export has this signature.
+        unsafe {
+            let ntdll = GetModuleHandleA(c"ntdll.dll".as_ptr().cast());
+            GetProcAddress(ntdll, c"NtQueryObject".as_ptr().cast()).map(|f| std::mem::transmute::<_, Query>(f))
+        }
+    });
+    let Some(query) = query else { return String::new() };
+    // ObjectTypeInformation (2): a UNICODE_STRING with the type's name first.
+    let mut buffer = [0u64; 128];
+    let mut needed = 0u32;
+    // SAFETY: our buffer and its size; the handle is only asked about.
+    let status = unsafe { query(object as isize, 2, buffer.as_mut_ptr().cast(), size_of_val(&buffer) as u32, &mut needed) };
+    if status < 0 {
+        return format!("; not a handle now (status {status:#x})");
+    }
+    // SAFETY: the call filled a UNICODE_STRING at the start: a length in
+    // bytes, then a pointer into the same buffer.
+    let kind = unsafe {
+        let len = (buffer[0] & 0xffff) as usize / 2;
+        let at = buffer[1] as *const u16;
+        if at.is_null() { String::new() } else { String::from_utf16_lossy(std::slice::from_raw_parts(at, len.min(64))) }
+    };
+    let handle = object as *mut std::ffi::c_void;
+    let id = match kind.as_str() {
+        // SAFETY: plain queries on a handle of that kind.
+        "Thread" => format!(" {}", unsafe { GetThreadId(handle) }),
+        "Process" => format!(" {}", unsafe { GetProcessId(handle) }),
+        _ => String::new(),
+    };
+    format!("; a {kind}{id}")
 }
 
 /// This thread is about to wait for `object`, until what comes back is
